@@ -1,0 +1,4 @@
+sounds/_*
+_temp/
+__pycache__/
+miniconfig.json
