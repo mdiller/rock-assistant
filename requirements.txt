@@ -3,3 +3,4 @@ wheel
 play-sounds
 openai
 pyyaml
+tiktoken

@@ -1,9 +1,10 @@
+import os
+import json
 import asyncio
 import conversator as conv
 from pydub import AudioSegment
 from pydub.playback import play
 import pyaudio
-import os
 import asyncio
 from aiohttp import web
 from concurrent.futures import ThreadPoolExecutor
@@ -12,9 +13,10 @@ import re
 import openai
 import datetime
 import elevenlabs
-import json
-from obsidian import Obsidian, ObsidianFile, AssistantConfig
+import obsidian
+from obsidian import ObsidianFile, AssistantConfig
 from collections import OrderedDict
+import func_manager
 
 # used this service for finding a wake sound https://www.voicy.network/official-soundboards/sfx
 
@@ -27,17 +29,11 @@ miniconfig = {}
 with open(os.path.join(SCRIPT_DIR, "miniconfig.json"), "r") as f:
 	miniconfig = json.loads(f.read())
 
+obsidian.ROOT_DIR = miniconfig["obsidian_root"]
 openai_client = openai.OpenAI(api_key=miniconfig["openai"])
 elevenlabs.set_api_key(miniconfig["elevenlabs"])
 
-# the root location for obsidian
-OBSIDIAN_ROOT = miniconfig["obsidian_root"]
-OBSIDIAN_HELPER_PATH = os.path.join(OBSIDIAN_ROOT, miniconfig["obsidian_helper_path"])
-
-
-obsidian = Obsidian(OBSIDIAN_ROOT)
-config = AssistantConfig(os.path.join(OBSIDIAN_HELPER_PATH, "assistant_config.md"))
-
+config = AssistantConfig(os.path.join(obsidian.ROOT_DIR, miniconfig["obsidian_helper_path"], "assistant_config.md"))
 
 elevenlabs_voices = elevenlabs.voices()
 elevenlabs_voice = elevenlabs_voices[0]
@@ -66,12 +62,10 @@ mic_lock: asyncio.Lock
 mic_lock = asyncio.Lock()
 
 async def mic_start(request):
-	global conversator
 	print("WEB> /mic_start")
 	if mic_lock.locked():
 		mic_lock.release()
 	await mic_lock.acquire()
-	conversator = None
 	main_task = asyncio.create_task(main_chat())
 	return web.Response(text="You called GET on /mic_start")
 
@@ -91,8 +85,14 @@ async def mic_stop(request):
 
 async def run(request):
 	print("WEB> /run")
-	main_task = asyncio.create_task(main_run())
+	main_task = asyncio.create_task(run_file())
 	return web.Response(text="You called GET on /run")
+
+async def do_prompt(request):
+	print("WEB> /prompt")
+	query = request.query.get("q")
+	filename = await prompt_assistant_tts(query)
+	return web.FileResponse(filename)
 
 async def webserver():
 	app = web.Application()
@@ -102,11 +102,12 @@ async def webserver():
 	app.router.add_get("/mic_stop", mic_stop)
 	app.router.add_get("/mic_start_continue", mic_start_continue)
 	app.router.add_get("/run", run)
+	app.router.add_get("/prompt", do_prompt)
 
 	# Create the server and run it
 	runner = web.AppRunner(app)
 	await runner.setup()
-	site = web.TCPSite(runner, "localhost", 8080)
+	site = web.TCPSite(runner, None, 8080)
 	await site.start()
 
 	print("Server started on http://localhost:8080")
@@ -123,6 +124,48 @@ def get_context():
 	for key in infos:
 		results.append(f"{key}: {infos[key]}")
 	return "\n".join(results)
+
+class SimpleTimer():
+	def __init__(self, message=None):
+		self.message = message
+		self.start = datetime.datetime.now()
+		self.end = None
+	
+	def __enter__(self):
+		self.start = datetime.datetime.now()
+		return self
+
+	def __exit__(self, type, value, traceback):
+		self.stop()
+		if self.message:
+			print(self.message + f": {self.miliseconds} ms")
+
+	def stop(self):
+		self.end = datetime.datetime.now()
+	
+	@property
+	def seconds(self):
+		if self.end is None:
+			self.stop()
+		return int((self.end - self.start).total_seconds())
+	
+	@property
+	def miliseconds(self):
+		if self.end is None:
+			self.stop()
+		return int((self.end - self.start).total_seconds() * 1000.0)
+
+	def __str__(self):
+		s = self.seconds % 60
+		m = self.seconds // 60
+		text = f"{s} second{'s' if s != 1 else ''}"
+		if m > 0:
+			text = f"{m} minute{'s' if m != 1 else ''} and " + text
+		return text
+
+	def __repr__(self):
+		return self.__str__()
+
 
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
@@ -167,7 +210,7 @@ def openai_tts(text):
 	sound.export(temp_file_wav, format="wav")
 	return temp_file_wav
 
-def elevenlabs_tts(text):
+def elevenlabs_tts(text, file_only=False):
 	global elevenlabs_voice
 	elevenlabs_voice_name = config.tts_voice.replace(f"{ELEVENLABS_VOICE_KEYWORD}{VOICE_SEPARATOR}", "")
 	if elevenlabs_voice is None or elevenlabs_voice_name != elevenlabs_voice.name:
@@ -175,19 +218,23 @@ def elevenlabs_tts(text):
 			if voice.name == elevenlabs_voice_name:
 				elevenlabs_voice = voice
 	audio = elevenlabs.generate(text=text, voice=elevenlabs_voice)
-	# temp_file_wav = get_sound_path("_tts.wav")
-	# elevenlabs.save(audio, temp_file_wav)
-	# return temp_file_wav
-	elevenlabs.play(audio)
-	return None
+	if file_only:
+		temp_file_wav = get_sound_path("_tts.wav")
+		elevenlabs.save(audio, temp_file_wav)
+		return temp_file_wav
+	else:
+		elevenlabs.play(audio)
+		return None
 
-async def text_to_speech(text):
+async def text_to_speech(text, file_only=False):
 	loop = asyncio.get_event_loop()
 	if config.tts_voice.startswith(OPENAI_VOICE_KEYWORD):
 		wav_file = await loop.run_in_executor(ThreadPoolExecutor(), lambda: openai_tts(text))
+		if file_only:
+			return wav_file
 		await play_audio(wav_file)
 	elif config.tts_voice.startswith(ELEVENLABS_VOICE_KEYWORD):
-		await loop.run_in_executor(ThreadPoolExecutor(), lambda: elevenlabs_tts(text))
+		return await loop.run_in_executor(ThreadPoolExecutor(), lambda: elevenlabs_tts(text, file_only))
 	else:
 		raise Exception("Unsupported voice type")
 
@@ -255,130 +302,64 @@ async def transcribe_microphone():
 	return spoken_text
 
 async def main_chat():
-	global conversator
 	config.reload()
 	
 	prompt_text = await transcribe_microphone()
 
-	if prompt_text is None:
-		return
+	response = await prompt_assistant(prompt_text)
+	
+	await text_to_speech(response)
 
-	if conversator is None:
-		system_prompt_file = obsidian.open(config.chat_system_prompt)
-		system_text = system_prompt_file.content
-		system_text = system_text.strip()
-		conversator = conv.Conversator(asyncio.get_event_loop(), openai_client)
-		conversator.input_system(system_text)
-	conversator.input_self(prompt_text)
 
-	print("querying chatgpt...")
-	response_text = await conversator.get_response()
-	print(f"> {response_text}")
-
-	print("tts...")
-	await text_to_speech(response_text)
-	print("tts done!")
-
-async def main_run():
-	global conversator
+async def run_file():
 	config.reload()
-	
-	RESULT_SEPARATOR = "\n> CHATGPT RESPONSE:"
-	result_pattern = re.compile(f"{RESULT_SEPARATOR}\n[\s\S]*$", re.MULTILINE | re.DOTALL)
-	
-	prompt_file = obsidian.open(config.run_input)
 
+	system_prompt_file = obsidian.file(config.run_system_prompt)
+	system_prompt = system_prompt_file.content
+	system_prompt = system_prompt.strip()
+
+	prompt_file = obsidian.file(config.run_input)
 	prompt_text = prompt_file.content
-	prompt_text = re.sub(result_pattern, "", prompt_text)
 	prompt_text = prompt_text.strip()
-
-	# QUERY CHATGPT
-	conversator = conv.Conversator(asyncio.get_event_loop(), openai_client)
-
-	if config.run_system_prompt_enabled:
-		system_prompt_file = obsidian.open(config.run_system_prompt)
-		system_text = system_prompt_file.content
-		system_text = system_text.strip()
-		system_text = system_text.replace("{CONTEXT}", get_context())
-		conversator.input_system(system_text)
-
-	functions = [
-		{
-			'name': 'record_note',
-			'description': 'Saves the note to a text file',
-			'parameters': {
-				'type': 'object',
-				'properties': {
-					'text': {
-						'type': 'string',
-						'description': 'The content of the note to save'
-					}
-				}
-			}
-		},
-		{
-			'name': 'add_todo',
-			'description': 'Adds a to-do item for the given day',
-			'parameters': {
-				'type': 'object',
-				'properties': {
-					'date': {
-						'type': 'string',
-						'description': 'The day the todo item should be done on. Format should be YYYY-MM-DD (ex: 2020-12-30)'
-					},
-					'todo_text': {
-						'type': 'string',
-						'description': 'The text of the todo'
-					}
-				}
-			}
-		}
-	]
-
-	conversator.input_user(prompt_text)
-	print("querying chatgpt...")
-	response = await conversator.get_response_raw(functions)
-
-	message = response.choices[0].message
-
-	while message.content is None and message.function_call:
-		func_name = message.function_call.name
-		args = json.loads(message.function_call.arguments)
-		function_text = f"{func_name} {args}"
-		print("> " + function_text)
-		conversator.input_self(function_text)
-		conversator.input_user("Done!")
-		response = await conversator.get_response_raw(functions)
-		message = response.choices[0].message
 	
-	response_text = message.content
-	conversator.input_self(response_text)
+	response = await prompt_assistant(prompt_text, system_prompt)
 
-
-	print(f"> {response_text}")
-
-	# STORE RESULTS
-	result = f"{RESULT_SEPARATOR}\n\n{response_text}"
-	result_pattern = re.compile(f"{RESULT_SEPARATOR}\n[\s\S]*$", re.MULTILINE | re.DOTALL)
-	if re.search(result_pattern, prompt_file.content):
-		prompt_file.content = re.sub(result_pattern, result, prompt_file.content)
-	else:
-		prompt_file.content += "\n" + result
+	prompt_file.ass_output = response
 	prompt_file.write()
 
-	# TTS RESULTS?
-	# print("tts...")
-	# await text_to_speech(response_text)
-	# print("tts done!")
+async def prompt_assistant_tts(prompt_text):
+	response = await prompt_assistant(prompt_text)
+	filename = await text_to_speech(response, file_only=True)
+	return filename
 
-	# LOG CONVERSATION
-	conversation_file = obsidian.open(config.conversation_log)
-	conversation_file.content = ""
-	for message in conversator.messages:
-		conversation_file.content += f"\n> {message['role'].upper()}\n\n{message['content']}\n"
+async def prompt_assistant(prompt_text, system_prompt=None):
+	config.reload()
+
+	system_prompt_file = obsidian.file(config.run_system_prompt)
+	system_prompt = system_prompt_file.content
+	system_prompt = system_prompt.strip()
+
+	ctx = conv.Context(prompt_text, system_prompt)
+
+	funcman = func_manager.AssFunctionsManager(config.functions_dir)
+	superconversator = conv.SuperConversator(openai_client, ctx, funcman.functions)
+
+	response = await superconversator.run()
+	
+	conversation_file = obsidian.file(config.conversation_log)
+	conversation_file.content = superconversator.to_markdown()
 	conversation_file.write()
 
+	return response
 
+
+async def test():
+	pass
+	
 
 if __name__ == '__main__':
+	# asyncio.run(main_run())
 	asyncio.run(webserver())
+	# asyncio.run(test())
+
+
