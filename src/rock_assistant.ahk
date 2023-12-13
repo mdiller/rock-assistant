@@ -15,13 +15,13 @@ Trigger_Assistant(url_end)
 
 global not_pressing := true
 
-+F14::
-	if not_pressing
-	{
-		not_pressing := false
-		Trigger_Assistant("mic_start_continue")
-	}
-	return
+; +F14::
+; 	if not_pressing
+; 	{
+; 		not_pressing := false
+; 		Trigger_Assistant("mic_start_continue")
+; 	}
+; 	return
 
 F14::
 	if not_pressing

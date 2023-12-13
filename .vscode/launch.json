@@ -8,7 +8,7 @@
 			"name": "Rock Runner",
 			"type": "python",
 			"request": "launch",
-			"program": "chatgpt_run.py",
+			"program": "src/main.py",
 			"console": "integratedTerminal"
 		}
 	]

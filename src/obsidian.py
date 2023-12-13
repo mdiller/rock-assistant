@@ -3,13 +3,16 @@ import re
 import datetime
 import yaml
 
+from utils.settings import settings
+
 # Set this before running any obsidian stuff
-ROOT_DIR = None
+ROOT_DIR = settings.obsidian_root
 
 def file(path):
 	return ObsidianFile(path)
 
-def fix_path(path):
+
+def fix_path(path, print_if_missing=True):
 	if path is None:
 		raise Exception("null path passed to fix_path")
 	link_pattern = re.compile("^\[\[([^|]*)|.*\]\]$")
@@ -19,17 +22,40 @@ def fix_path(path):
 	if ROOT_DIR and (not ROOT_DIR in path) or not os.path.exists(path):
 		path = os.path.join(ROOT_DIR, path)
 	if not os.path.exists(path):
-		print(f"ERROR OBS FILE NOT FOUND: {path}")
+		if print_if_missing:
+			print(f"ERROR OBS FILE NOT FOUND: {path}")
 		return None
 	return path
+
+# <div class="rock-assistant-out"><span>Rock Assistant</span><span>0.0202¢ | 111 tokens | 5:31pm Dec 12, 2023</span></div>
+ASS_OUTPUT_PATTERN = re.compile("\n<div class=\"rock-assistant-out\"><span>Rock Assistant</span><span>(?:([^\n]+) \| |)([^\n]+)</span></div>\n\n([\s\S]*)$", re.MULTILINE | re.DOTALL)
+# a representation of the assistant output
+class AssOutput():
+	timestamp: str
+	text: str
+	extra_info: str
+	def __init__(self, text, extra_info = None, timestamp = None):
+		self.text = text
+		self.extra_info = extra_info
+		self.timestamp = timestamp
+	
+	def __repr__(self):
+		info_stuff = "";
+		if self.extra_info:
+			info_stuff += f" {self.extra_info} | "
+		result = f"\n<div class=\"rock-assistant-out\"><span>Rock Assistant</span><span>{info_stuff}{self.timestamp}</span></div>\n\n{self.text}"
+		return result
+	
+	@classmethod
+	def parse(cls, match):
+		return AssOutput(match.group(3), match.group(2), match.group(1))
 
 class ObsidianFile():
 	name: str
 	path: str
 	metadata_text: str
 	metadata: dict
-	_ass_output: str
-	ass_output_timestamp: str
+	ass_output: AssOutput
 	content: str
 
 	def __init__(self, path):
@@ -38,24 +64,10 @@ class ObsidianFile():
 		self.metadata_text = None
 		self.metadata = None
 		self.ass_output = None
-		self.ass_output_previous = None
-		self.ass_output_timestamp = None
 		self.path = path
 		self.name = os.path.splitext(os.path.basename(path))[0]
 		self.read()
 	
-	@property
-	def ass_output(self):
-		return self._ass_output
-	
-	@ass_output.setter
-	def ass_output(self, text):
-		self._ass_output = text
-		timestamp = datetime.datetime.now().strftime("%I:%M%p %b %d, %Y")
-		if timestamp.startswith("0"):
-			timestamp = timestamp[1:]
-		timestamp = re.sub("(AM|PM)", lambda m: m.group(1).lower(), timestamp)
-		self.ass_output_timestamp = timestamp
 	
 	def read(self):
 		with open(self.path, "r", encoding="utf8") as f:
@@ -74,12 +86,10 @@ class ObsidianFile():
 		else:
 			self.metadata = None
 		
-		ass_output_regex = re.compile("\n---\n> __ROCK ASSISTANT \(([^)\n]+)\):__\n\n([\s\S]*)$", re.MULTILINE | re.DOTALL)
-		match = ass_output_regex.search(text)
+		match = ASS_OUTPUT_PATTERN.search(text)
 		if match:
-			self._ass_output = match.group(2)
-			self.ass_output_timestamp = match.group(1)
-			text = re.sub(ass_output_regex, "", text)
+			self.ass_output = AssOutput.parse(match)
+			text = re.sub(ASS_OUTPUT_PATTERN, "", text)
 		
 		self.content = text
 	
@@ -93,10 +103,19 @@ class ObsidianFile():
 		text += self.content
 
 		if self.ass_output is not None:
+			if isinstance(self.ass_output, str):
+				self.ass_output = AssOutput(self.ass_output)
 			if self.content[-1] != "\n":
 				text += "\n"
 			
-			text += f"\n---\n> __ROCK ASSISTANT ({self.ass_output_timestamp}):__\n\n{self.ass_output}"
+			if self.ass_output.timestamp is None:
+				timestamp = datetime.datetime.now().strftime("%I:%M%p %b %d, %Y")
+				if timestamp.startswith("0"):
+					timestamp = timestamp[1:]
+				timestamp = re.sub("(AM|PM)", lambda m: m.group(1).lower(), timestamp)
+				self.ass_output.timestamp = timestamp
+
+			text += str(self.ass_output)
 		return text
 
 	def write(self):
@@ -129,6 +148,7 @@ class ObsidianFile():
 	def print(self, text):
 		self.content += f"\n{text}"
 		self.write()
+
 
 
 class AssistantConfig(ObsidianFile):
