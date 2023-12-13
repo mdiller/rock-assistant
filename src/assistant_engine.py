@@ -83,9 +83,15 @@ class AssEngine():
 		ass_config = prompt_file.metadata.get("assistant", {})
 		action = ass_config.get("action", "default")
 		use_functions = ass_config.get("functions", True)
+		system_prompt_path = ass_config.get("system_prompt", None)
+		if system_prompt_path:
+			system_prompt_path = obsidian.fix_path(system_prompt_path)
+
+		if not system_prompt_path:
+			system_prompt_path = self.config.run_system_prompt
 
 		if action == "default":
-			system_prompt_file = obsidian.file(self.config.run_system_prompt)
+			system_prompt_file = obsidian.file(system_prompt_path)
 			system_prompt = system_prompt_file.content.strip()
 			prompt_text = prompt_file.content.strip()
 			response = await self.prompt_assistant(prompt_text, system_prompt, as_ass_output=True)
