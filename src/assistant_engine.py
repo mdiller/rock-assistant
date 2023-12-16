@@ -94,7 +94,7 @@ class AssEngine():
 			system_prompt_file = obsidian.file(system_prompt_path)
 			system_prompt = system_prompt_file.content.strip()
 			prompt_text = prompt_file.content.strip()
-			response = await self.prompt_assistant(prompt_text, system_prompt, as_ass_output=True)
+			response = await self.prompt_assistant(prompt_text, system_prompt, as_ass_output=True, use_functions=use_functions)
 		elif action == "run_convo":
 			func_runner = func_manager.AssFunctionRunner(self.config.functions_dir)
 			if not use_functions:
@@ -111,8 +111,11 @@ class AssEngine():
 				elif kind == "ASSISTANT":
 					conversator.input_self(content)
 
+			functions = func_runner.functions
+			if not use_functions:
+				functions = None
 			print("gpt...")
-			response = await conversator.get_response()
+			response = await conversator.get_response(functions)
 			print(f"ASSISTANT> {response}")
 
 			await self.log_conversation(conversator)
@@ -129,7 +132,7 @@ class AssEngine():
 		filename = await self.audio_api.generate_tts(response)
 		return filename
 
-	async def prompt_assistant(self, prompt_text, system_prompt=None, as_ass_output=False):
+	async def prompt_assistant(self, prompt_text, system_prompt=None, as_ass_output=False, use_functions=True):
 		self.config.reload()
 
 		if not system_prompt:
@@ -140,6 +143,8 @@ class AssEngine():
 		ctx = conv.Context(prompt_text, system_prompt)
 
 		func_runner = func_manager.AssFunctionRunner(self.config.functions_dir)
+		if not use_functions:
+			func_runner.functions = []
 		superconversator = conv.SuperConversator(openai_client, ctx, func_runner)
 
 		print("gpt...")
