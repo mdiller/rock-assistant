@@ -43,3 +43,9 @@ Whenever it does a gpt interaction it logs it to a designated obsidian file for 
 
 Heres the log from the "Example 1" run above:
 ![demo](docs/images/log.png)
+
+## APIs used
+- openai GPT (gpt-3.5-turbo for now, but could use others in future)
+- openai whisper (speech to text)
+- openai tts
+- elevenlabs (tts)
