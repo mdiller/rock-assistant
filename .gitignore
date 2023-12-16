@@ -1,4 +1,4 @@
-sounds/_*
+resource/sounds/_*
 _temp/
 __pycache__/
 settings.json

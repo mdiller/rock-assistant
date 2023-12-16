@@ -17,7 +17,7 @@ ELEVENLABS_VOICE_KEYWORD = "ElevenLabs"
 
 class AudioApi():
 	def __init__(self, openai_client: OpenAI, config: AssistantConfig):
-		self.elevenlabs_voices = elevenlabs.voices()
+		self.elevenlabs_voices = elevenlabs.voices() # TODO: make so this doesnt break when we've got no internet?
 		self.elevenlabs_voice = self.elevenlabs_voices[0]
 		self.openai_voices = [ "alloy", "echo", "fable", "onyx", "nova", "shimmer" ]
 		self.openai_client = openai_client

@@ -173,5 +173,5 @@ class AssEngine():
 	
 	async def on_startup(self):
 		# await self.run_file()
-		# await self.run_function("write_thought", [ "a thought" ])
+		# await self.run_function("christmas_tree", [ "off" ])
 		pass
