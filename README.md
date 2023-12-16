@@ -18,7 +18,9 @@ If you don't know what obsidian is, basically its an app for notes/writing. I us
 
 ## Demo
 
-![demo](docs/images/demo.mp4)
+
+https://github.com/mdiller/rock-assistant/assets/3231343/25e93dd3-7747-4fc9-907d-efdc9c6d0570
+
 
 ## The Functions Stuff
 You can just add a new obsidian file in the right directory that looks like the img below, and the assistant will automatically use it if they think it should be used to complete the user's request. You can also update this file on the fly or add new files on the fly without having to restart the assistant, which makes for super smooth development/testing of new functions.
