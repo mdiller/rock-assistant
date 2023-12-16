@@ -35,7 +35,7 @@ You can just add a new obsidian file in the right directory that looks like the 
 
 ![demo](docs/images/run_example2.png)
 
-The above Example uses this as the system prompt: (which you can see specified in the metadata)
+The above Example uses this as the system prompt: (by specifying it in the metadata at the top of the file)
 ![demo](docs/images/run_example2_prompt.png)
 
 ## The log
