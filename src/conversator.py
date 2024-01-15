@@ -115,9 +115,13 @@ class Context():
 	def __init__(self, prompt: str, system_prompt: str):
 		self.prompt = prompt
 		self.system_prompt = system_prompt
+		current_time = datetime.datetime.now().strftime("%I:%M %p")
+		if current_time.startswith("0"):
+			current_time = current_time[1:]
 		today = datetime.datetime.now() - datetime.timedelta(hours=4) # anything before 4am is part of the previous day
 		self.information = OrderedDict([
-			("today", today.strftime("%Y-%m-%d (%A)"))
+			("today", today.strftime("%Y-%m-%d (%A)")),
+			("current time", current_time)
 		])
 		self.done = False
 
@@ -222,9 +226,12 @@ class PreciseMoney():
 			index = len(value) - shifts
 			return value[:index] + "." + value[index:]
 	
+	@property
+	def cent_amount(self):
+		return self.shift_value(4)
+
 	def __repr__(self):
-		cent_amount = self.shift_value(4)
-		return f"{cent_amount}¢"
+		return f"{self.cent_amount}¢"
 
 # 1 micro cent is 0.000001 cents. 
 # chatgpt 3.5 input is $0.001 per 1k tokens, or 1 microcent per token

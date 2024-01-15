@@ -1,6 +1,7 @@
 from aiohttp import web
 from aiohttp.web_request import Request
 import asyncio
+from colorama import Fore
 
 from assistant_engine import AssEngine
 
@@ -24,16 +25,19 @@ class WebServer():
 		print(f"Server started on http://localhost:{SERVER_PORT}")
 
 	async def handle_request(self, request: Request):
-		print(f"WEB> {request.path_qs}")
+		print(f"{Fore.BLUE}WEB> {request.path_qs}{Fore.WHITE}")
 
 		if request.path == "/mic_start":
 			asyncio.ensure_future(self.engine.main_chat())
+		if request.path == "/mic_start_thought":
+			asyncio.ensure_future(self.engine.record_thought_local())
 		elif request.path == "/mic_stop":
 			await self.engine.transcribe_microphone_stop()
 		elif request.path == "/run":
 			asyncio.ensure_future(self.engine.action_button())
 		elif request.path == "/prompt":
 			query = request.query.get("q")
+			# filename = await self.engine.run_function_tts("write_thought", [ query ])
 			filename = await self.engine.prompt_assistant_tts(query)
 			return web.FileResponse(filename)
 		elif request.path == "/thought":

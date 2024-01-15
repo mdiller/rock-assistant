@@ -23,6 +23,8 @@ global not_pressing := true
 ; 	}
 ; 	return
 
+F13::Trigger_Assistant("run")
+
 F14::
 	if not_pressing
 	{
@@ -31,10 +33,25 @@ F14::
 	}
 	return
 
-F13::Trigger_Assistant("run")
 
 +F14 up::
 F14 up::
 	not_pressing := true
 	Trigger_Assistant("mic_stop")
 	return
+
+F15::
+if not_pressing
+{
+	not_pressing := false
+	Trigger_Assistant("mic_start_thought")
+}
+return
+
+
++F15 up::
+F15 up::
+	not_pressing := true
+	Trigger_Assistant("mic_stop")
+	return
+

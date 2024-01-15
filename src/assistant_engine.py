@@ -7,11 +7,14 @@ import datetime
 import elevenlabs
 import re
 from obsidian import ObsidianFile, AssistantConfig, AssOutput
+from importlib import reload
 
 from utils.settings import settings
 import func_manager
 from local_machine import LocalMachine
 from apis.audio import AudioApi
+
+loaded_thing = False
 
 conversator = None
 
@@ -60,6 +63,16 @@ class AssEngine():
 		
 		return spoken_text
 
+	async def record_thought_local(self):
+		self.config.reload()
+
+		prompt_text = await self.transcribe_microphone()
+
+		if prompt_text is None:
+			return # nothing was said, so do nothing
+
+		
+		await self.run_function_tts("write_thought", [ prompt_text ])
 
 	async def main_chat(self):
 		self.config.reload()
@@ -157,6 +170,15 @@ class AssEngine():
 			return AssOutput(response, superconversator.get_token_count())
 		else:
 			return response
+		
+	async def code_writer(self, stuff):
+		global loaded_thing
+		from code_writer import writer_entry, CodeFile
+		if loaded_thing:
+			reload(CodeFile)
+			reload(writer_entry)
+		loaded_thing = True
+		await writer_entry.run_thing(openai_client)
 	
 	async def run_function(self, name, args):
 		print(f"> Running func: {name}")
@@ -173,10 +195,13 @@ class AssEngine():
 		return filename
 
 	async def action_button(self):
-		await self.run_file()
+		await self.code_writer("")
+		# await self.run_file()
 		# await self.run_function("write_thought", [ "a thought" ])
 	
 	async def on_startup(self):
+		# result = test_thing()
+		# print(result)
 		# await self.run_file()
 		# await self.run_function("christmas_tree", [ "off" ])
 		pass

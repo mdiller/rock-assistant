@@ -49,6 +49,10 @@ class Settings:
 	def homeassistant_url(self):
 		return self.json_data["homeassistant_url"]
 	
+	@property
+	def googleapi_key(self):
+		return self.json_data["googleapi_key"]
+	
 	
 	@property
 	def resourcedir(self):

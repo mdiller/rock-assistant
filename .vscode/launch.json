@@ -10,6 +10,13 @@
 			"request": "launch",
 			"program": "src/main.py",
 			"console": "integratedTerminal"
+		},
+		{
+			"name": "Rock Bot",
+			"type": "python",
+			"request": "launch",
+			"program": "src/test_bot.py",
+			"console": "integratedTerminal"
 		}
 	]
 }
