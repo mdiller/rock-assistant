@@ -16,7 +16,6 @@ class MetadataVar():
 			self.format_lambda = lambda x: str(x)
 		
 	def parse_set(self, text):
-		print(f"SETTING: {self.name} - {text}")
 		if text is None:
 			self.value = self.default_value
 		else:
