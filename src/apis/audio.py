@@ -67,6 +67,8 @@ class AudioApi():
 		return TTS_TEMP_MP3
 
 	async def generate_tts(self, text):
+		if text == True:
+			return settings.resource("sounds/success.wav")
 		uri = f"tts:{self.config.tts_voice}:{text}"
 		filename = await cache.get_filename(uri)
 		if not filename:

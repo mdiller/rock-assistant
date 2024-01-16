@@ -1,26 +1,31 @@
 '''''
-prompt: ok add a web request to send "hello there" as a discord message to this discord webhook: https://discord.com/api/webhooks/1196368250649456730/Z3vCm3tEItwE3jKChQf1tjT3fCe9DD7PAjIXqdlsuXLTL556ED-ckrImnkjkSB7ItF1I
-[- Used So Far: 0.2003¢ | 1377 tokens -]
+PROMPT:
+ok add a web request to send "hello there" as a discord message to a discord message url when they pass one in as an argument in the command line
+[- Used So Far: 0.0743¢ | 422 tokens -]
 '''''
 import requests
+import sys
 
-with open(__file__, "r") as file:
-    contents = file.read()
-    print(contents)
+def send_discord_message(message_url, content):
+    payload = {
+        'content': content
+    }
+    headers = {
+        'Content-Type': 'application/json'
+    }
 
-# Send a webhook request
-webhook_url = "https://discord.com/api/webhooks/1196368250649456730/Z3vCm3tEItwE3jKChQf1tjT3fCe9DD7PAjIXqdlsuXLTL556ED-ckrImnkjkSB7ItF1I"
-message = "hello there"
+    response = requests.post(message_url, json=payload, headers=headers)
+    if response.status_code == 200:
+        print("Message sent successfully")
+    else:
+        print("Message sending failed")
 
-payload = {
-    "content": message
-}
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Usage: python script.py <message_url>")
+        sys.exit(1)
 
-response = requests.post(webhook_url, json=payload)
+    message_url = sys.argv[1]
+    content = "Hello there"
 
-if response.status_code == 204:
-    print("Webhook request sent successfully")
-else:
-    print("Failed to send webhook request")
-
-print("badaboom")
+    send_discord_message(message_url, content)

@@ -2,8 +2,6 @@ import os
 import openai
 import functools
 import asyncio
-from openai import OpenAI
-from  openai.types.chat import ChatCompletion
 from func_manager import AssFunction, AssFunctionRunner
 import typing
 from collections import OrderedDict
@@ -12,6 +10,8 @@ import datetime
 import json
 import traceback
 
+from openai import OpenAI
+from openai.types.chat import ChatCompletion
 
 import utils.utils as utils
 

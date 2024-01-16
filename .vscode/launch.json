@@ -17,6 +17,13 @@
 			"request": "launch",
 			"program": "src/test_bot.py",
 			"console": "integratedTerminal"
+		},
+		{
+			"name": "SoundMaker",
+			"type": "python",
+			"request": "launch",
+			"program": "src/utils/soundmaker.py",
+			"console": "integratedTerminal"
 		}
 	]
 }

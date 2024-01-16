@@ -1,3 +1,8 @@
+'''''
+PROMPT:
+
+[- Used So Far: 0.0¢ | 0 tokens -]
+'''''
 from aiohttp import web
 from aiohttp.web_request import Request
 import asyncio
@@ -16,6 +21,7 @@ class WebServer():
 		app = web.Application()
 
 		app.router.add_route('GET', '/{tail:.*}', self.handle_request)
+		print("starting server...")
 
 		# Create the server and run it
 		runner = web.AppRunner(app)
@@ -34,7 +40,8 @@ class WebServer():
 		elif request.path == "/mic_stop":
 			await self.engine.transcribe_microphone_stop()
 		elif request.path == "/run":
-			asyncio.ensure_future(self.engine.action_button())
+			file = request.query.get("file")
+			asyncio.ensure_future(self.engine.action_button(file))
 		elif request.path == "/prompt":
 			query = request.query.get("q")
 			# filename = await self.engine.run_function_tts("write_thought", [ query ])

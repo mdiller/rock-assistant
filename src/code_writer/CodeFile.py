@@ -1,8 +1,47 @@
 from collections import OrderedDict
 import re
 import os
+import typing
 from colorama import Fore
 
+
+# TODO: use this
+class CodeLanguage():
+	def __init__(self, name: str, extension: str, comment_block_start: str, comment_block_end: str, inline_comment: str, codeblock_options: typing.List[str] = []):
+		self.name = name
+		self.extension = extension
+		self.comment_block_start = comment_block_start
+		self.comment_block_end = comment_block_end
+		self.inline_comment = inline_comment
+		self.codeblock_options = codeblock_options
+		self.codeblock_options.append(self.name)
+		self.codeblock_options.append(self.extension)
+	
+	@property
+	def codeblock_pattern(self):
+		return f"(?:{'|'.join(self.codeblock_options)})"
+	
+	@classmethod
+	def get_by_extension(cls, filename: str):
+		for lang in ALL_CODELANGS:
+			if filename.endswith(f".{lang.extension}"):
+				return lang
+		return None
+	
+	@classmethod
+	def is_code_file(cls, filename: str):
+		return CodeLanguage.get_by_extension(filename) is not None
+
+	@classmethod
+	def all():
+		return ALL_CODELANGS
+
+ALL_CODELANGS = [
+	CodeLanguage("python", "py", "'''''", "'''''", "#"),
+	CodeLanguage("javascript", "js", "/*", "*/", "//"),
+	CodeLanguage("typescript", "ts", "/*", "*/", "//", [ "js", "javascript" ]),
+	CodeLanguage("AutoHotkey", "ahk", "/*", "*/", ";"),
+]
 
 # A serializable piece of metadata that can be inserted into a template etc
 class MetadataVar():
@@ -30,11 +69,9 @@ class MetadataVar():
 
 # TODO: next todo is to write a thing in CodeFile so that the arg definitions are included in the template, and we have arg types, and we generate a class from the template when it changes and automatically reload the module after
 
-
-METADATA_START = "'''''"
-METADATA_END = "'''''"
 METADATA_TEMPLATE = """
-prompt:{prompt}
+PROMPT:
+{prompt}
 [- Used So Far: {price}¢ | {tokens} tokens -]
 """
 class CodeMetadata():
@@ -96,20 +133,24 @@ class CodeFile():
 	metadata_text: str
 	metadata: CodeMetadata
 	content: str
+	language: CodeLanguage
 
 	def __init__(self, path):
 		self.content = None
 		self.metadata_text = None
 		self.metadata = None
 		self.path = path
+		self.language = CodeLanguage.get_by_extension(self.path)
 		self.read()
-	
 	
 	def read(self):
 		with open(self.path, "r", encoding="utf8") as f:
 			text = f.read()
 
-		metadata_regex = re.compile(f"^{METADATA_START}\n([\s\S]*?)\n{METADATA_END}\n", re.MULTILINE | re.DOTALL)
+		START = re.escape(self.language.comment_block_start)
+		END = re.escape(self.language.comment_block_end)
+
+		metadata_regex = re.compile(f"^{START}\n([\s\S]*?)\n{END}\n", re.MULTILINE | re.DOTALL)
 		match = metadata_regex.search(text)
 		if match:
 			self.metadata_text = match.group(1)
@@ -120,7 +161,7 @@ class CodeFile():
 				print(f"ERROR reading metadata of: {self.path}")
 				self.metadata = CodeMetadata()
 		else:
-			self.metadata = None
+			self.metadata = CodeMetadata("")
 		
 		self.content = text
 	
@@ -130,7 +171,7 @@ class CodeFile():
 	def _get_full_content(self):
 		text = ""
 		if self.metadata.has_content():
-			text += f"{METADATA_START}\n{self.metadata}\n{METADATA_END}\n"
+			text += f"{self.language.comment_block_start}\n{self.metadata}\n{self.language.comment_block_end}\n"
 		text += self.content
 		return text
 

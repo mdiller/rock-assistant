@@ -11,7 +11,6 @@ ROOT_DIR = settings.obsidian_root
 def file(path):
 	return ObsidianFile(path)
 
-
 def fix_path(path, print_if_missing=True):
 	if path is None:
 		raise Exception("null path passed to fix_path")
@@ -117,6 +116,9 @@ class ObsidianFile():
 
 			text += str(self.ass_output)
 		return text
+	
+	def generate_metadata(self):
+		self.metadata_text = yaml.safe_dump(self.metadata, sort_keys=False).strip()
 
 	def write(self):
 		text = self._get_full_content()
@@ -179,3 +181,7 @@ class AssistantConfig(ObsidianFile):
 	@property
 	def functions_dir(self):
 		return self.metadata.get("functions_dir", None)
+
+	@property
+	def system_prompts_dir(self):
+		return self.metadata.get("system_prompts_dir", None)

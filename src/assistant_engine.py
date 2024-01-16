@@ -1,4 +1,5 @@
 import asyncio
+from code_writer.CodeFile import CodeLanguage
 import conversator as conv
 import asyncio
 import obsidian
@@ -8,6 +9,7 @@ import elevenlabs
 import re
 from obsidian import ObsidianFile, AssistantConfig, AssOutput
 from importlib import reload
+import os
 
 from utils.settings import settings
 import func_manager
@@ -70,9 +72,9 @@ class AssEngine():
 
 		if prompt_text is None:
 			return # nothing was said, so do nothing
-
 		
-		await self.run_function_tts("write_thought", [ prompt_text ])
+		filename = await self.run_function_tts("write_thought", [ prompt_text ])
+		await self.local_machine.play_wav(filename)
 
 	async def main_chat(self):
 		self.config.reload()
@@ -88,22 +90,52 @@ class AssEngine():
 
 		await self.local_machine.play_wav(filename)
 	
-	async def run_file(self):
+	async def run_file(self, file: str = None):
 		self.config.reload()
 
-		prompt_file = obsidian.file(self.config.run_input)
+		if file is None:
+			prompt_file = obsidian.file(self.config.run_input)
+		else:
+			prompt_file = obsidian.file(file)
+
+		valid_actions = [ "run_convo" ]
+
+		system_prompts_root = os.path.join(obsidian.ROOT_DIR, self.config.system_prompts_dir)
+		for file in os.listdir(system_prompts_root):
+			filename_without_extension = os.path.splitext(file)[0]
+			valid_actions.append(filename_without_extension)
+
+
+		default_config = {
+			"action": f"VALID_ACTIONS: {', '.join(valid_actions)}",
+			"functions": False
+		}
+		if prompt_file.metadata is None or prompt_file.metadata.get("assistant", None) is None:
+			if prompt_file.metadata is None:
+				prompt_file.metadata = {}
+			prompt_file.metadata["assistant"] = {}
+			for key in default_config:
+				if not key in prompt_file.metadata["assistant"]:
+					prompt_file.metadata["assistant"][key] = default_config[key]
+			prompt_file.generate_metadata()
+			prompt_file.write()
+			print("Wrote default args")
+			return False
+		
+		if prompt_file.metadata["assistant"].get("action") not in valid_actions:
+			print("Invalid action given")
+			return False
 
 		ass_config = prompt_file.metadata.get("assistant", {})
-		action = ass_config.get("action", "default")
-		use_functions = ass_config.get("functions", True)
-		system_prompt_path = ass_config.get("system_prompt", None)
-		if system_prompt_path:
-			system_prompt_path = obsidian.fix_path(system_prompt_path)
+		action = ass_config.get("action", default_config["action"])
+		use_functions = ass_config.get("functions", default_config["functions"])
 
-		if not system_prompt_path:
-			system_prompt_path = self.config.run_system_prompt
+		system_prompt_path = None
+		if action is not "run_convo":
+			system_prompt_path = os.path.join(system_prompts_root, f"{action}.md")
+			action = "run"
 
-		if action == "default":
+		if action == "run":
 			system_prompt_file = obsidian.file(system_prompt_path)
 			system_prompt = system_prompt_file.content.strip()
 			prompt_text = prompt_file.content.strip()
@@ -171,20 +203,20 @@ class AssEngine():
 		else:
 			return response
 		
-	async def code_writer(self, stuff):
+	async def code_writer(self, file):
 		global loaded_thing
 		from code_writer import writer_entry, CodeFile
 		if loaded_thing:
 			reload(CodeFile)
 			reload(writer_entry)
 		loaded_thing = True
-		await writer_entry.run_thing(openai_client)
+		return await writer_entry.run_thing(openai_client, file)
 	
 	async def run_function(self, name, args):
 		print(f"> Running func: {name}")
 		func_runner = func_manager.AssFunctionRunner(self.config.functions_dir)
 		result = await func_runner.run(name, args, None)
-		print(result.response)
+		print("Response: ", result.response)
 		if not result.success:
 			print(result.error)
 		return result.response
@@ -194,10 +226,29 @@ class AssEngine():
 		filename = await self.audio_api.generate_tts(response)
 		return filename
 
-	async def action_button(self):
-		await self.code_writer("")
-		# await self.run_file()
+	async def _action_button(self, file: str = None):
+		if file is None:
+			raise Exception("Action button pressed not on a file")
+		else:
+			if CodeLanguage.is_code_file(file):
+				return await self.code_writer(file)
+			elif file.endswith(".md"):
+				return await self.run_file(file)
+			else:
+				raise Exception(f"Unknown file type for action button: {file}")
 		# await self.run_function("write_thought", [ "a thought" ])
+
+	async def action_button(self, file: str = None):
+		await self.local_machine.play_wav(settings.resource("sounds/task_start.wav"), wait=False)
+		try:
+			result = await self._action_button(file)
+			if result == False:
+				await self.local_machine.play_wav(settings.resource("sounds/ignore.wav"))
+			else:
+				await self.local_machine.play_wav(settings.resource("sounds/success.wav"))
+		except:
+			await self.local_machine.play_wav(settings.resource("sounds/error.wav"))
+			raise
 	
 	async def on_startup(self):
 		# result = test_thing()
