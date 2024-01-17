@@ -6,7 +6,8 @@ PROMPT:
 # Removed unnecessary imports
 from colorama import Fore
 from code_writer.CodeFile import CodeFile, CodeLanguage
-import conversator as conv
+from context import Context
+import chat.conversator as conv
 import re
 
 def print_color(text, color):
@@ -40,7 +41,7 @@ Indentation should be 4 spaces
 SYSTEM_PROMPT = """
 You are a code assistant designed to help me with my code. I will send you entire {lang_name} text files, and you will return the edited {lang_name} text file in a single "```{lang_codeblock}" code block, after making the changes to accomplish what the prompt is requesting.
 """
-async def run_thing(openai_client, file: str = DEFAULT_FILE):
+async def run_thing(ctx: Context, file: str = DEFAULT_FILE):
 	code_file = CodeFile(file)
 	print(f"] Running CodeWriter on: {file}")
 
@@ -63,7 +64,7 @@ async def run_thing(openai_client, file: str = DEFAULT_FILE):
 	prompt = code_file.metadata.get("prompt").strip()
 
 	if prompt != "":
-		conversator = conv.Conversator(openai_client)
+		conversator = ctx.get_conversator()
 		conversator.input_system(parse_system_prompt(SYSTEM_PROMPT, code_file.language))
 		conversator.input_user(f"I have the following {code_file.language.name} code:\n```{code_file.language.extension}\n{code_file.content}\n```\nPROMPT: {prompt}")
 		print("] Querying...")
@@ -89,7 +90,7 @@ async def run_thing(openai_client, file: str = DEFAULT_FILE):
 		match = re.search(prompt_pattern, code_file.content)
 		whitespace = match.group(1)
 		prompt = match.group(2)
-		conversator = conv.Conversator(openai_client)
+		conversator = ctx.get_conversator()
 		conversator.input_system(parse_system_prompt(SYSTEM_PROMPT_INLINE, code_file.language))
 		conversator.input_user(prompt)
 		
