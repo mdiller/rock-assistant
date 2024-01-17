@@ -1,7 +1,7 @@
 '''''
 PROMPT:
 
-[- Used So Far: 1.5398¢ | 7675 tokens -]
+[- Used So Far: 2.0655¢ | 11175 tokens -]
 '''''
 import typing
 import numpy as np
@@ -9,7 +9,6 @@ from scipy.io.wavfile import write
 from pydub import AudioSegment, playback
 import librosa
 
-WAV_FILE_NAME = "_temp.wav"
 SAMPLE_RATE = 44100
 
 # EASE_PLINK = lambda t, duration: np.exp(-4 * np.log(10) * t / duration)
@@ -135,9 +134,13 @@ class WavBuilder():
 			self.waveform *= ease_func(t, duration)
 
 	def save_and_play(self, filename):
-		# Normalize waveform to 16-bit range
 		waveform = self.waveform
-		waveform *= 32767 / np.max(np.abs(waveform))
+
+		# lower volume
+		volume_adjust = 0.08
+
+		# Normalize waveform to 16-bit range
+		waveform *= volume_adjust * 32767 / np.max(np.abs(waveform))
 		waveform = waveform.astype(np.int16)
 
 		# Trim trailing 0's
@@ -153,40 +156,6 @@ class WavBuilder():
 
 wav_builder = WavBuilder()
 tempo = 0.2
-
-# wav_builder.add_slide("C4", "E4", tempo, EASE_EXP_IN)
-# wav_builder.add_note("C5", tempo * 2, EASE_PLINK)
-# wav_builder.add_chord(["C5", "E4", "G4"], tempo * 2, EASE_PLINK)
-
-# wav_builder.add_slide("D4", "E4", tempo, EASE_EXP_IN)
-# wav_builder.add_note("E4", tempo)
-# wav_builder.add_slide("E4", "D4", tempo, EASE_EXP_OUT)
-
-# wav_builder.slide_notes(["C4", "E4", "G4", "C5"], tempo, tempo / 8)
-# wav_builder.apply_ease(EASE_EXP_IN_OUT)
-
-
-# wav_builder.slide_notes(["C4", "Eb4", "F4", "Gb4", "G4", "Bb4", "C5", "Bb4", "G4", "Gb4", "F4", "Eb4", "C4"], tempo, tempo / 8)
-# wav_builder.apply_ease(EASE_EXP_IN_OUT)
-
-
-# wav_builder.slide_notes(["C4", "C5", "C4"], tempo, tempo / 8)
-# wav_builder.add_note("C4", tempo * 2)
-# wav_builder.slide_notes(["C4", "C5", "C4"], tempo, tempo / 8)
-# wav_builder.apply_ease(EASE_EXP_IN_OUT)
-
-# wav_builder.add_slide("C4", "F4", tempo * .3, EASE_EXP_IN)
-# wav_builder.add_note("F4", tempo * .7, EASE_EXP_OUT)
-# wav_builder.add_note("C5", tempo * 2, EASE_PLINK)
-
-# notes = [ "F4", "C5", "F5" ]
-# notes = [ "F3", "C4", "C5" ]
-# notes = [ "G4", "C5", "G5" ]
-
-# wav_builder.add_slide(notes[0], notes[1], tempo * .3, EASE_EXP_IN)
-# wav_builder.add_note(notes[1], tempo * .7, EASE_EXP_OUT)
-# wav_builder.add_note(notes[2], tempo * 2, EASE_PLINK)
-
 
 
 # GOOD WAKE
@@ -215,76 +184,3 @@ wav_builder.save_and_play("resource/sounds/error.wav")
 # TASK_START
 wav_builder.add_note("G4", tempo * 2, EASE_PLINK)
 wav_builder.save_and_play("resource/sounds/task_start.wav")
-
-
-
-# wav_builder.add_note("D5", tempo * 2, EASE_PLINK)
-# wav_builder.add_note("A4", tempo * 2, EASE_PLINK)
-
-# # wav_builder.add_note(notes[0], tempo / 2, EASE_PLINK)
-# wav_builder.add_note(notes[0], tempo, EASE_LINEAR)
-# wav_builder.add_note(notes[1], tempo * 2, EASE_PLINK)
-
-
-# wav_builder.add_slide("C4", "E4", tempo, EASE_EXP_IN)
-# wav_builder.add_note("C4", tempo, EASE_EXP_IN)
-# wav_builder.add_slide("C5", "E5", tempo * 2, EASE_PLINK)
-# wav_builder.add_note("C5", tempo * 2, EASE_PLINK)
-
-# wav_builder.add_note("D4", tempo)
-# wav_builder.add_slide("D4", "E4", tempo, EASE_EXP_IN)
-# wav_builder.add_note("E4", tempo)
-# wav_builder.add_note("G5", tempo * 2, EASE_PLINK)
-# wav_builder.add_note("C5", tempo * 1.5, EASE_PLINK)
-# wav_builder.add_slide("E4", "C5", tempo / 4)  
-# wav_builder.add_note("E5", tempo * 1.5, EASE_PLINK)
-
-# wav_builder.add_slide("C4", "E4", tempo, EASE_EXP_IN)
-# wav_builder.add_note("C5", tempo * 2, EASE_PLINK)
-# wav_builder.add_silence(tempo * 4)
-# # wav_builder.add_slide("C5", "E4", tempo, EASE_EXP_IN)
-# wav_builder.add_note("G4", tempo * 2, EASE_PLINK)
-
-# wav_builder.add_silence(tempo * 4)
-# wav_builder.add_note("F4", tempo, EASE_EXP_IN)
-# wav_builder.add_note("C5", tempo * 2, EASE_PLINK)
-# wav_builder.add_silence(tempo * 4)
-# wav_builder.add_note("C5", tempo, EASE_EXP_IN)
-# wav_builder.add_note("F4", tempo * 2, EASE_PLINK)
-
-
-
-# wav_builder.save_and_play(WAV_FILE_NAME)
-
-
-# STUFF FOR VISUALIZING EASE FUNCTIONS
-
-# import numpy as np
-# import matplotlib.pyplot as plt
-
-# # Parameters
-# duration = 5  # duration in seconds
-# SAMPLE_RATE = 100  # sample rate per second
-
-# # Generating the time array
-# t = np.linspace(0, duration, int(duration * SAMPLE_RATE), False)
-
-# # Plotting
-# plt.figure(figsize=(12, 6))
-
-# plt.subplot(1, 2, 1)
-# plt.plot(t, EASE_PLINK(t, duration))
-# plt.title("EASE_PLINK")
-# plt.xlabel("Time (seconds)")
-# plt.ylabel("Value")
-# plt.ylim(0, 1)
-
-# plt.subplot(1, 2, 2)
-# plt.plot(t, EASE_PLINK3(t, duration))
-# plt.title("EASE_PLINK3")
-# plt.xlabel("Time (seconds)")
-# plt.ylabel("Value")
-# plt.ylim(0, 1)
-
-# plt.tight_layout()
-# plt.show()

@@ -82,6 +82,8 @@ async def run_thing(openai_client, file: str = DEFAULT_FILE):
 			code_file.content = new_code
 			code_file.metadata.set("tokens", code_file.metadata.get("tokens") + token_count.input_count + token_count.output_count)
 			code_file.metadata.set("price", code_file.metadata.get("price") + float(token_count.get_total_price().cent_amount))
+			print("] Removing prompt that caused this")
+			code_file.metadata.set("prompt", "")
 			code_file.write()
 	elif re.search(prompt_pattern, code_file.content):
 		match = re.search(prompt_pattern, code_file.content)

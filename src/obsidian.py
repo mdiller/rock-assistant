@@ -129,9 +129,13 @@ class ObsidianFile():
 		current_time = datetime.datetime.now().strftime("%I:%M %p")
 		if current_time.startswith("0"):
 			current_time = current_time[1:]
-		if not re.search("\n\s*\n$", self.content):
-			self.content += "\n"
-		self.content += f"\n<span class=\"dillerm-timestamp\">🕥 {current_time}</span>\n{text}\n"
+		# if not re.search("\n\s*\n$", self.content):
+		# 	self.content += "\n"
+		timestamp = f"\n<span class=\"dillerm-timestamp\">🕥 {current_time}</span>\n"
+		if timestamp in self.content:
+			self.content += f"{text}\n"
+		else:
+			self.content += f"{timestamp}{text}\n"
 		self.write()
 
 	# adds todo to the first list of todos in the note

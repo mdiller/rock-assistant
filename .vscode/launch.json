@@ -5,7 +5,7 @@
 	"version": "0.2.0",
 	"configurations": [
 		{
-			"name": "Rock Runner",
+			"name": "Rock Assistant",
 			"type": "python",
 			"request": "launch",
 			"program": "src/main.py",
@@ -23,6 +23,13 @@
 			"type": "python",
 			"request": "launch",
 			"program": "src/utils/soundmaker.py",
+			"console": "integratedTerminal"
+		},
+		{
+			"name": "Run Current File",
+			"type": "python",
+			"request": "launch",
+			"program": "${file}",
 			"console": "integratedTerminal"
 		}
 	]

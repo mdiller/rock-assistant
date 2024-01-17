@@ -131,7 +131,7 @@ class AssEngine():
 		use_functions = ass_config.get("functions", default_config["functions"])
 
 		system_prompt_path = None
-		if action is not "run_convo":
+		if action != "run_convo":
 			system_prompt_path = os.path.join(system_prompts_root, f"{action}.md")
 			action = "run"
 
@@ -181,7 +181,8 @@ class AssEngine():
 		self.config.reload()
 
 		if not system_prompt:
-			system_prompt_file = obsidian.file(self.config.run_system_prompt)
+			system_prompts_root = os.path.join(obsidian.ROOT_DIR, self.config.system_prompts_dir)
+			system_prompt_file = obsidian.file(os.path.join(system_prompts_root, "run.md"))
 			system_prompt = system_prompt_file.content
 			system_prompt = system_prompt.strip()
 
