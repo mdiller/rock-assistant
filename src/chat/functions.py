@@ -1,3 +1,8 @@
+'''''
+PROMPT:
+
+[- Used So Far: 0.033¢ | 239 tokens -]
+'''''
 from collections import OrderedDict
 import typing
 import os
@@ -7,7 +12,7 @@ import traceback
 import json
 import inspect
 from  openai.types.chat.chat_completion_message import FunctionCall
-from context import Context, StepType
+from context import Context, StepFinalState, StepType
 
 
 from obsidian import ObsidianFile, AssistantConfig
@@ -26,6 +31,12 @@ class AssFunctionArg():
 		self.type_name = None
 		self.optional = False
 	
+	def toDoc(self):
+		result =  f"{self.name}: {self.type}"
+		if self.optional:
+			result += f" = None"
+		return result
+
 	@classmethod
 	def try_convert_type(cls, argtype):
 		if argtype == str:
@@ -139,34 +150,12 @@ class AssFunction():
 			self.file.write()
 	
 	@property
-	def name(self):
+	def name(self) -> str:
 		return self.file.metadata["name"]
 		
 	@property
 	def description(self):
 		return self.file.metadata["description"]
-
-class AssFunctionResult():
-	success: bool
-	response: str
-	error: str
-
-	@classmethod
-	def create(cls, response):
-		result = AssFunctionResult()
-		result.success = True
-		result.response = response 
-		result.error = None 
-		return result
-	
-	@classmethod
-	def error(cls, error, response = "It seems I've broken!"):
-		result = AssFunctionResult()
-		result.success = False
-		result.response = response 
-		result.error = error 
-		return result
-
 
 class SpecialFuncArgType():
 	def __init__(self, name: str, description: str):
@@ -237,15 +226,17 @@ class FunctionsRunner():
 	def parse_func_call(self, text: str) -> FunctionCall:
 		arg_pattern = f"(\"[^\"]*\"|{'|'.join(map(lambda v: v.name, self.special_variables))})"
 		args_pattern = f"(?:|{arg_pattern}|{arg_pattern}(?:, ?{arg_pattern}){1, 10})"
-		pattern = f"^([A-Z_]+)\({args_pattern}\)$"
+		pattern = f"^([A-Z_]+)(?:\({args_pattern}\)|)$"
 		match = re.search(pattern, text)
 		if not match:
 			return None
 		func_name = match.group(1)
 		unparsed_args = []
-		for i in range(2, 10):
-			val = match.group(i)
-			if i is None:
+		# TODO: update this to be arg-based parsing
+		groups = match.groups()
+		for i in range(1, len(groups)):
+			val = groups[i]
+			if val is None:
 				break
 			unparsed_args.append(val)
 		# TODO: properly parse args (should have nice extensible system for this)
@@ -263,48 +254,63 @@ class FunctionsRunner():
 			if func_call is not None:
 				return func_call
 		
-		raise Exception("just throw this for now to see whats goin on")
-		return None
+		return FunctionCall("GIVE_UP", [])
 
 	# interpret the prompt and then runs the resulting function
-	async def run_prompt(self, prompt: str) -> AssFunctionResult:
+	async def run_prompt(self, prompt: str):
 		func_call = await self.interpret_prompt(prompt)
-		return await self._run_func(func_call)
+		if func_call.func_name == "GIVE_UP":
+			conversator = self.ctx.get_conversator()
+			conversator.input_user(prompt)
+			return await conversator.get_response()
+		else:
+			return await self._run_func(func_call)
 	
-	async def run_func(self, func_name: str, args_list: typing.List) -> AssFunctionResult:
+	async def run_func(self, func_name: str, args_list: typing.List):
 		return await self._run_func(FunctionCall(func_name, args_list))
 
-	async def _run_func(self, func_call: FunctionCall) -> AssFunctionResult:
+	async def _run_func(self, func_call: FunctionCall):
+		with self.ctx.step(StepType.FUNCTION, func_call.func_name.upper() + "()") as step:
+			final_state = await self._run_func_internal(func_call)
+			step.final_state = final_state
+
+	async def _run_func_internal(self, func_call: FunctionCall) -> StepFinalState:
 		func_name = func_call.func_name
 		args_list = func_call.args_list
-		with self.ctx.step(StepType.FUNCTION, func_name.upper() + "()"):
-			args_list.insert(0, self.ctx)
+		args_list.insert(0, self.ctx)
 
-			selected_func: AssFunction
-			selected_func = next((func for func in self.functions if func.name == func_name), None)
-			if selected_func is None:
-				return AssFunctionResult.error(f"Attempted to call fictional function {func_name}")
-			
-			for i in range(len(selected_func.args)):
-				arg = selected_func.args[i]
-				if not isinstance(args_list[i], arg.type):
-					try:
-						args_list[i] = arg.type(args_list[i])
-					except Exception as e:
-						return AssFunctionResult.error(f"Un-fixable type '{type(args_list[i])}' passed to arg {arg.name} of {func_name}")
+		selected_func: AssFunction
+		selected_func = next((func for func in self.functions if func.name.upper() == func_name.upper()), None)
+		if selected_func is None:
+			return StepFinalState.CHAT_ERROR # Attempted to call fictional function
+		
+		for i in range(len(selected_func.args)):
+			arg = selected_func.args[i]
+			if not isinstance(args_list[i], arg.type):
+				try:
+					args_list[i] = arg.type(args_list[i])
+				except Exception as e:
+					return StepFinalState.CHAT_ERROR # Un-fixable type '{type(args_list[i])}' passed to arg {arg.name} of {func_name}
 
-			try:
-				response = selected_func.exec(*args_list)
-			except Exception as e:
-				# TODO: make a specific exception type that we can call to indicate bad input vs bad func calling maybe.
-				error = traceback.format_exc()
-				pretty_args = ", ".join(map(lambda arg: str(arg), args_list))
-				error = f"ERROR ON: {selected_func.name}({pretty_args})\n```\n{error}```"
-				selected_func.file.ass_output = error
-				selected_func.file.write()
-				return AssFunctionResult.error(error, f"Exception in function {func_name}!")
-			if response is not None:
-				return AssFunctionResult.create(response)
-			else:
-				return AssFunctionResult.create(None)
+		try:
+			# TODO: make this so it works on async and non-async stuff
+			response = selected_func.exec(*args_list)
+			if inspect.iscoroutine(response):
+				response = await response
+
+		except Exception as e:
+			# TODO: make a specific exception type that we can call to indicate bad input vs bad func calling maybe.
+			error = traceback.format_exc()
+			pretty_args = ", ".join(map(lambda arg: str(arg), args_list))
+			error = f"ERROR ON: {selected_func.name}({pretty_args})\n```\n{error}```"
+			selected_func.file.ass_output = error
+			selected_func.file.write()
+			raise
+		if response is not None:
+			if isinstance(response, StepFinalState):
+				return response
+			elif isinstance(response, str):
+				await self.ctx.say(response)
+		else:
+			return StepFinalState.SUCCESS
 

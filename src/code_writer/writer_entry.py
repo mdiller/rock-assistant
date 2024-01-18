@@ -6,7 +6,7 @@ PROMPT:
 # Removed unnecessary imports
 from colorama import Fore
 from code_writer.CodeFile import CodeFile, CodeLanguage
-from context import Context
+from context import Context, StepFinalState
 import chat.conversator as conv
 import re
 
@@ -41,7 +41,7 @@ Indentation should be 4 spaces
 SYSTEM_PROMPT = """
 You are a code assistant designed to help me with my code. I will send you entire {lang_name} text files, and you will return the edited {lang_name} text file in a single "```{lang_codeblock}" code block, after making the changes to accomplish what the prompt is requesting.
 """
-async def run_thing(ctx: Context, file: str = DEFAULT_FILE):
+async def run_thing(ctx: Context, file: str = DEFAULT_FILE) -> StepFinalState:
 	code_file = CodeFile(file)
 	print(f"] Running CodeWriter on: {file}")
 
@@ -76,7 +76,7 @@ async def run_thing(ctx: Context, file: str = DEFAULT_FILE):
 			printerr("Couldn't match regex for code")
 			print_color("Response:", Fore.CYAN)
 			print_color(response, Fore.BLACK)
-			return False
+			return StepFinalState.NOTHING_DONE
 		else:
 			print("] Writing new code!")
 			new_code = match.group(1)
@@ -103,7 +103,7 @@ async def run_thing(ctx: Context, file: str = DEFAULT_FILE):
 			printerr("Couldn't match regex for code")
 			print_color("Response:", Fore.CYAN)
 			print_color(response, Fore.BLACK)
-			return False
+			return StepFinalState.CHAT_ERROR
 		else:
 			print("] Writing new code!")
 			new_code = match.group(1)
@@ -117,7 +117,7 @@ async def run_thing(ctx: Context, file: str = DEFAULT_FILE):
 		print("] Querying...")
 		response = await conversator.get_response()
 		token_count = conversator.get_token_count()
-		return True
 	else:
 		print("No prompt! Nothing to do!")
-		return False
+		return StepFinalState.NOTHING_DONE
+	return StepFinalState.SUCCESS

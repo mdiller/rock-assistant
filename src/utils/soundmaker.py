@@ -137,7 +137,7 @@ class WavBuilder():
 		waveform = self.waveform
 
 		# lower volume
-		volume_adjust = 0.08
+		volume_adjust = 0.16
 
 		# Normalize waveform to 16-bit range
 		waveform *= volume_adjust * 32767 / np.max(np.abs(waveform))

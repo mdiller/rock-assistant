@@ -1,6 +1,12 @@
+'''''
+PROMPT:
+
+[- Used So Far: 0.0¢ | 0 tokens -]
+'''''
 import asyncio
+import typing
 from code_writer.CodeFile import CodeLanguage
-from context import Context, Step, StepType
+from context import AssSound, Context, ContextSource, Step, StepFinalState, StepType
 import chat.conversator as conv
 import asyncio
 import obsidian
@@ -37,12 +43,14 @@ class AssEngine():
 		self.audio_api = AudioApi(openai_client, config)
 		self.config = config
 	
-	def new_ctx(self, step_type: StepType, step_name: str = None):
+	def new_ctx(self, step_type: StepType, source: ContextSource) -> Context:
+		# TODO: fix this root step bullshit to be better
 		return Context(
-			Step(step_type, None, step_name),
+			Step(None, step_type),
 			openai_client,
 			self.local_machine,
-			self.config)
+			self.config,
+			source)
 
 	async def log_conversation(self, conversation):
 		conversation_file = obsidian.file(self.config.conversation_log)
@@ -53,17 +61,23 @@ class AssEngine():
 	async def transcribe_microphone_stop(self):
 		await self.local_machine.record_microphone_stop()
 
-	async def transcribe_microphone(self):
-		audio_data = await self.local_machine.record_microphone()
+	async def transcribe_microphone(self, ctx: Context):
+		with ctx.step(StepType.LOCAL_RECORD):
+			await ctx.play_sound(AssSound.WAKE)
+			audio_data = await self.local_machine.record_microphone()
 		if audio_data is None:
+			await ctx.play_sound(AssSound.IGNORE)
 			return None
+		await ctx.play_sound(AssSound.UNWAKE)
 
 		async with speech_file_lock:
 			audio_data.export(SPEECH_TEMP_FILE, format="wav")
 
-			print("transcribing...")
-			spoken_text = await self.audio_api.transcribe(SPEECH_TEMP_FILE)
-			print("TRANSCRIPTION: " + spoken_text)
+			
+			with ctx.step(StepType.TRANSCRIBE):
+				print("transcribing...")
+				spoken_text = await self.audio_api.transcribe(SPEECH_TEMP_FILE)
+				print("TRANSCRIPTION: " + spoken_text)
 
 		spoken_text = spoken_text.strip()
 		
@@ -74,30 +88,26 @@ class AssEngine():
 		return spoken_text
 
 	async def record_thought_local(self):
-		self.config.reload()
+		with self.new_ctx(StepType.THOUGHT_LOCAL, ContextSource.LOCAL_MACHINE) as ctx:
+			self.config.reload()
 
-		prompt_text = await self.transcribe_microphone()
+			prompt_text = await self.transcribe_microphone(ctx)
 
-		if prompt_text is None:
-			return # nothing was said, so do nothing
-		
-		filename = await self.run_function_tts("write_thought", [ prompt_text ])
-		await self.local_machine.play_wav(filename)
+			if prompt_text is None:
+				return # nothing was said, so do nothing
+			
+			await self.run_function(ctx, "write_thought", [ prompt_text ])
 
 	async def main_chat(self):
 		self.config.reload()
 		
-		with self.new_ctx(StepType.ASSISTANT_LOCAL) as ctx:
-			prompt_text = await self.transcribe_microphone()
+		with self.new_ctx(StepType.ASSISTANT_LOCAL, ContextSource.LOCAL_MACHINE) as ctx:
+			prompt_text = await self.transcribe_microphone(ctx)
 
 			if prompt_text is None:
 				return # nothing was said, so do nothing
 
-			response = await self.prompt_assistant(ctx, prompt_text)
-			
-			filename = await self.audio_api.generate_tts(response)
-
-			await self.local_machine.play_wav(filename)
+			await self.prompt_assistant(ctx, prompt_text)
 	
 	async def run_file(self, ctx: Context, file: str = None):
 		self.config.reload()
@@ -108,7 +118,7 @@ class AssEngine():
 			else:
 				prompt_file = obsidian.file(file)
 
-			valid_actions = [ "run_convo" ]
+			valid_actions = [ "run_convo", "assistant" ]
 
 			system_prompts_root = os.path.join(obsidian.ROOT_DIR, self.config.system_prompts_dir)
 			for file in os.listdir(system_prompts_root):
@@ -117,8 +127,7 @@ class AssEngine():
 
 
 			default_config = {
-				"action": f"VALID_ACTIONS: {', '.join(valid_actions)}",
-				"functions": False
+				"action": f"VALID_ACTIONS: {', '.join(valid_actions)}"
 			}
 			if prompt_file.metadata is None or prompt_file.metadata.get("assistant", None) is None:
 				if prompt_file.metadata is None:
@@ -138,24 +147,20 @@ class AssEngine():
 
 			ass_config = prompt_file.metadata.get("assistant", {})
 			action = ass_config.get("action", default_config["action"])
-			use_functions = ass_config.get("functions", default_config["functions"])
 
 			system_prompt_path = None
-			if action != "run_convo":
+			if action not in [ "run_convo", "assistant" ]:
 				system_prompt_path = os.path.join(system_prompts_root, f"{action}.md")
-				action = "run"
 
-			if action == "run":
-				system_prompt_file = obsidian.file(system_prompt_path)
-				system_prompt = system_prompt_file.content.strip()
+			if action == "assistant":
 				prompt_text = prompt_file.content.strip()
-				response = await self.prompt_assistant(prompt_text, system_prompt, as_ass_output=True, use_functions=use_functions)
+				await self.prompt_assistant(ctx, prompt_text)
+				response = "`response didnt include text`"
+				if len(ctx.say_log) > 0:
+					response = ctx.say_log[0]
+				response = AssOutput(response, ctx.converators[0].get_token_count())
 			elif action == "run_convo":
-				func_runner = functions.AssFunctionRunner(self.config.functions_dir)
-				if not use_functions:
-					func_runner.functions = []
-				
-				conversator = conv.Conversator(openai_client)
+				conversator = ctx.get_conversator()
 				pattern = "(?:\n|^)> (SYSTEM|USER|ASSISTANT)\n([\s\S]+?)(?=(?:\n> (?:SYSTEM|USER|ASSISTANT)|$))"
 				for kind, content in re.findall(pattern, prompt_file.content):
 					content = content.strip()
@@ -166,26 +171,27 @@ class AssEngine():
 					elif kind == "ASSISTANT":
 						conversator.input_self(content)
 
-				functions = func_runner.functions
-				if not use_functions:
-					functions = None
 				print("gpt...")
-				response = await conversator.get_response(functions)
+				response = await conversator.get_response()
 				print(f"ASSISTANT> {response}")
 
 				await self.log_conversation(conversator)
 
 				response = AssOutput(response, conversator.get_token_count())
 			else:
-				response = f"ERROR: '{action}' is not a valid assistant actionaction"
+				system_prompt_path = os.path.join(system_prompts_root, f"{action}.md")
+				system_prompt_file = obsidian.file(system_prompt_path)
+				system_prompt = system_prompt_file.content.strip()
+				prompt_text = prompt_file.content.strip()
+
+				conversator = ctx.get_conversator()
+				conversator.input_system(system_prompt)
+				conversator.input_user(prompt_text)
+				response = await conversator.get_response()
+				response = AssOutput(response, conversator.get_token_count())
 
 			prompt_file.ass_output = response
 			prompt_file.write()
-
-	async def prompt_assistant_tts(self, ctx: Context, prompt_text: str):
-		response = await self.prompt_assistant(ctx, prompt_text)
-		filename = await self.audio_api.generate_tts(response)
-		return filename
 
 	async def prompt_assistant(self, ctx: Context, prompt_text: str):
 		self.config.reload()
@@ -194,7 +200,8 @@ class AssEngine():
 
 		response = await func_runner.run_prompt(prompt_text)
 
-		return response
+		if response and isinstance(response, str):
+			await ctx.say(response)
 		
 	async def code_writer(self, ctx: Context, file):
 		global loaded_thing
@@ -203,22 +210,23 @@ class AssEngine():
 			reload(CodeFile)
 			reload(writer_entry)
 		loaded_thing = True
-		with ctx.step(StepType.CODE_WRITER):
-			return await writer_entry.run_thing(ctx, file)
+		with ctx.step(StepType.CODE_WRITER) as step:
+			step.final_state = await writer_entry.run_thing(ctx, file)
 	
-	async def run_function(self, name, args):
+	async def run_function(self, ctx: Context, name: str, args: typing.List[str]):
 		print(f"> Running func: {name}")
-		func_runner = functions.FunctionsRunner(self.config.functions_dir)
-		result = await func_runner.run_func(name, args, None)
-		print("Response: ", result.response)
-		if not result.success:
-			print(result.error)
-		return result.response
+		func_runner = functions.FunctionsRunner(self.config.functions_dir, ctx)
+		await func_runner.run_func(name, args)
 	
-	async def run_function_tts(self, name, args):
-		response = await self.run_function(name, args)
-		filename = await self.audio_api.generate_tts(response)
-		return filename
+	async def web_prompt(self, prompt: str):
+		with self.new_ctx(StepType.WEB_ASSISTANT, ContextSource.WEB) as ctx:
+			await self.prompt_assistant(ctx, prompt)
+		return ctx.last_played_audio_file
+
+	async def web_thought(self, thought: str):
+		with self.new_ctx(StepType.WEB_ASSISTANT, ContextSource.WEB) as ctx:
+			await self.run_function(ctx, "write_thought", [ thought ])
+		return ctx.last_played_audio_file
 
 	async def _action_button(self, ctx: Context, file: str = None):
 		if file is None:
@@ -233,16 +241,14 @@ class AssEngine():
 		# await self.run_function("write_thought", [ "a thought" ])
 
 	async def action_button(self, file: str = None):
-		await self.local_machine.play_wav(settings.resource("sounds/task_start.wav"), wait=False)
 		try:
-			with self.new_ctx(StepType.ACTION_BUTTON) as ctx:
-				result = await self._action_button(ctx, file)
-			if result == False:
-				await self.local_machine.play_wav(settings.resource("sounds/ignore.wav"))
-			else:
-				await self.local_machine.play_wav(settings.resource("sounds/success.wav"))
+			with self.new_ctx(StepType.ACTION_BUTTON, ContextSource.LOCAL_MACHINE) as ctx:
+				await ctx.play_sound(AssSound.TASK_START)
+				await self._action_button(ctx, file)
+			result = ctx.final_state
+			await ctx.play_sound(result.sound)
 		except:
-			await self.local_machine.play_wav(settings.resource("sounds/error.wav"))
+			await ctx.play_sound(AssSound.ERROR)
 			raise
 	
 	async def on_startup(self):
@@ -250,6 +256,7 @@ class AssEngine():
 		# print(result)
 		# await self.run_file()
 		# await self.run_function("christmas_tree", [ "off" ])
-		with self.new_ctx(StepType.ACTION_BUTTON) as ctx:
-			await self.prompt_assistant(ctx, "Write down that I'm thinking about bananas")
+		# with self.new_ctx(StepType.ACTION_BUTTON) as ctx:
+		# 	response = await self.prompt_assistant(ctx, "Write down that I'm thinking about bananas")
+		# 	print("done!", response.response)
 		pass

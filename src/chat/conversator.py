@@ -1,3 +1,4 @@
+from __future__ import annotations
 from enum import Enum
 import os
 import openai
@@ -72,24 +73,24 @@ class Conversator:
 	def _get_response(self, response_count: int = 1):
 			return self.openai_client.chat.completions.create(
 				model="gpt-3.5-turbo",
-				messages=self.messages,
+				messages=list(map(lambda m: m.toJson(), self.messages)),
 				n=response_count)
 	
 	async def get_response(self) -> str:
-		messages = await self.get_responses(0)
+		messages = await self.get_responses(1)
 		return messages[0]
 
 	async def get_responses(self, response_count: int = 1) -> typing.List[str]:
 		response: ChatCompletion
 		with self.ctx.step(StepType.AI_CHAT):
 			response = await utils.run_async(lambda: self._get_response(response_count))
-			messages = list(map(lambda c: c.message.content, response.choices[0]))
+			messages = list(map(lambda c: c.message.content, response.choices))
 
 			counter = self.get_token_count()
 			tokens = counter.input_count + counter.output_count
 			for message in messages:
 				tokens += len(self.tokenizer.encode(message))
-			self.ctx.current_step.price = counter.total_price
+			self.ctx.current_step.price = counter.get_total_price()
 			self.ctx.current_step.tokens += tokens
 		
 		self_message = ConversatorMessage(messages[0], ConversatorRole.ASSISTANT, messages)
@@ -117,7 +118,6 @@ class Conversator:
 class TokenCounter():
 	input_count: int
 	output_count: int
-	total_price: PreciseMoney
 	def __init__(self):
 		self.input_count = 0
 		self.output_count = 0

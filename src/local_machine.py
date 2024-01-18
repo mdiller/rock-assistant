@@ -94,9 +94,6 @@ class LocalMachine():
 		stream_starttime = datetime.datetime.now()
 		stream.start_stream()
 
-		# play wake sound
-		await self.play_wav(settings.resource("sounds/wake.wav"), wait=False)
-
 		try:
 			await asyncio.wait_for(self.mic_lock.acquire(), timeout = MICROPHONE_TIMEOUT_SECONDS)
 			self.mic_lock.release()
@@ -104,7 +101,6 @@ class LocalMachine():
 			print("ignoring: recording too long")
 			stream.stop_stream()
 			stream.close()
-			await self.play_wav(settings.resource("sounds/ignore.wav"), wait=False)
 			return None
 		
 		await asyncio.sleep(0.2) # finish recording for couple hundred miliseconds
@@ -115,7 +111,6 @@ class LocalMachine():
 		elapsed_time = datetime.datetime.now() - stream_starttime
 		if elapsed_time < datetime.timedelta(seconds=1):
 			print("ignoring: wasnt recording long enough")
-			await self.play_wav(settings.resource("sounds/ignore.wav"), wait=False)
 			return None
 
 		# Create an AudioSegment to store the audio data
@@ -124,8 +119,5 @@ class LocalMachine():
 		# Keep retrieving audio data from the queue until it is empty
 		while not audio_queue.empty():
 			audio_data += AudioSegment(audio_queue.get_nowait(), sample_width=2, channels=recording_channels, frame_rate=recording_rate)
-
-		# play un-wake sound
-		await self.play_wav(settings.resource("sounds/unwake.wav"), wait=False)
 
 		return audio_data

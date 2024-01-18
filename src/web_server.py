@@ -44,12 +44,11 @@ class WebServer():
 			asyncio.ensure_future(self.engine.action_button(file))
 		elif request.path == "/prompt":
 			query = request.query.get("q")
-			# filename = await self.engine.run_function_tts("write_thought", [ query ])
-			filename = await self.engine.prompt_assistant_tts(query)
+			filename = await self.engine.web_prompt(query)
 			return web.FileResponse(filename)
 		elif request.path == "/thought":
 			text = request.query.get("text")
-			filename = await self.engine.run_function_tts("write_thought", [ text ])
+			filename = await self.engine.web_thought(text)
 			return web.FileResponse(filename)
 		else:
 			return web.Response(text="Unknown Request!", status=404)
