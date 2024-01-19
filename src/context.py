@@ -5,11 +5,13 @@ PROMPT:
 '''''
 from __future__ import annotations
 import asyncio
+from collections import OrderedDict
 import datetime
 from enum import Enum
 import typing
 from openai import OpenAI
 from apis.audio import AudioApi
+from gui.gui import AssistantGui
 
 from utils.settings import settings
 from local_machine import LocalMachine
@@ -77,25 +79,27 @@ class StepFinalState(Enum):
 		self.pretty_name = pretty_name
 		self.sound = sound
 		self.priority = priority
-	
+
+# could use <font-awesome-icon :icon="['fas', 'user-secret']" /> as our main assistant icon
 class StepType(Enum):
-	ASSISTANT_LOCAL = ("Assistant")
-	THOUGHT_LOCAL = ("Record Thought")
-	ACTION_BUTTON = ("Action Button")
-	WEB_ASSISTANT = ("Phone Assistant")
-	WEB_THOUGHT = ("Phone Thought")
+	ASSISTANT_LOCAL = ("Assistant",       "fas fa-user-tie")
+	THOUGHT_LOCAL = ("Record Thought",    "fas fa-lightbulb")
+	ACTION_BUTTON = ("Action Button",     "fas fa-circle-play")
+	WEB_ASSISTANT = ("Phone Assistant",   "fas fa-user-tie")
+	WEB_THOUGHT = ("Phone Thought",       "fas fa-lightbulb")
 
-	CODE_WRITER = ("Code Assistant")
-	OBSIDIAN_RUNNER = ("Obsidian Runner")
+	CODE_WRITER = ("Code Assistant",      "fas fa-pencil")
+	OBSIDIAN_RUNNER = ("Obsidian Runner", "fas fa-file-lines")
 
-	FUNCTION = ("Function")
-	AI_CHAT = ("OpenAI Chat")
-	AI_INTERPRETER = ("OpenAI Chat")
-	LOCAL_RECORD = ("Listening")
-	TRANSCRIBE = ("Transcribing")
-	TTS = ("TTS")
-	def __init__(self, pretty_name: str):
+	FUNCTION = ("Function",          "fas fa-terminal")
+	AI_CHAT = ("OpenAI Chat",        "fas fa-cat")
+	AI_INTERPRETER = ("OpenAI Chat", "fas fa-brain")
+	LOCAL_RECORD = ("Listening",     "fas fa-microphone")
+	TRANSCRIBE = ("Transcribing",    "fas fa-feather-pointed")
+	TTS = ("TTS",                    "fas fa-comment-dots")
+	def __init__(self, pretty_name: str, icon: str):
 		self.pretty_name = pretty_name
+		self.icon = icon
 
 class LogMessage():
 	def __init__(self, text: str):
@@ -139,7 +143,33 @@ class Step():
 		if ctx.final_state is None or ctx.final_state.priority < self.final_state.priority:
 			ctx.final_state = self.final_state
 		for step in self.child_steps:
-			step.on_ctx_finish()
+			step.on_ctx_finish(ctx)
+	
+	@property
+	def css_id(self):
+		if self.parent:
+			return self.parent.css_id + "-" + self.name
+		else:
+			return self.name
+
+	def toGuiJson(self, id_prefix=""):
+		step_id = f"{id_prefix}{self.step_type.pretty_name}"
+		child_jsons = []
+		for i, step in enumerate(self.child_steps):
+			child_jsons.append(step.toGuiJson(f"{step_id}-{i}"))
+		classes = []
+		if self.status == StepStatus.RUNNING:
+			if id_prefix != "": # don't put loading on the root step
+				classes.append("loading")
+		if self.final_state == StepFinalState.EXCEPTION:
+			classes.append("error")
+		return OrderedDict({
+			"id": step_id,
+			"name": self.step_type.pretty_name,
+			"icon": self.step_type.icon,
+			"classes": classes,
+			"child_steps": child_jsons,
+		})
 
 
 	def __enter__(self) -> Step:
@@ -166,7 +196,7 @@ class Context():
 		self.source = source
 		self.final_state: StepFinalState = None
 		self.target: str = None
-		self.last_played_audio_file: str = None
+		self.finish_audio_response: str = None
 		self.say_log: typing.List[str] = []
 	
 	def get_conversator(self) -> 'chat.conversator.Conversator':
@@ -181,15 +211,16 @@ class Context():
 		self.current_step.logs.append(LogMessage(text))
 	
 	async def _play_audio(self, filename: str):
-		self.last_played_audio_file = filename
 		if self.source == ContextSource.LOCAL_MACHINE:
 			await self.local_machine.play_wav(filename, False)
 
-	async def say(self, text: str):
+	async def say(self, text: str, is_finish=False):
 		with self.step(StepType.TTS):
 			self.log(f"> SAYING: '{text}'")
 			self.say_log.append(text)
 			filename = await self.audio_api.generate_tts(text)
+		if is_finish:
+			self.finish_audio_response = filename
 		await self._play_audio(filename)
 	
 	async def play_sound(self, sound: AssSound):
@@ -197,26 +228,48 @@ class Context():
 	
 	def step(self, step_type: StepType, step_name: str = None) -> Step:
 		step = Step(self, step_type, self.current_step, step_name)
+		self.current_step.child_steps.append(step)
 		self.current_step = step
+		self.update_gui()
 		return step
 	
 	def _exit_step(self):
 		self.current_step = self.current_step.parent
+		self.update_gui()
 
-	def on_finish(self):
+	def update_gui(self):
+		self.local_machine.gui.update(self.toGuiJson())
+
+	def toGuiJson(self):
+		return {
+			"is_done": self.final_state is not None,
+			"start_time": self.root_step.time_start.isoformat(),
+			"root_step": self.root_step.toGuiJson()
+		}
+
+	# START/END EVENTS
+	async def on_finish(self):
 		self.log("Done!")
 		self.root_step.on_ctx_finish(self)
 		self.log(f"Final state: {self.final_state}")
-		if self.last_played_audio_file is None:
-			self.last_played_audio_file = self.final_state.sound.filepath
-			asyncio.ensure_future(self.play_sound(self.final_state.sound))
-
+		if self.finish_audio_response is None:
+			self.finish_audio_response = self.final_state.sound.filepath
+			await self.play_sound(self.final_state.sound)
+		self.update_gui()
+	
+	async def on_start(self):
+		self.update_gui()
+		self.local_machine.gui.show()
+		pass
+	
+	# "WITH" implementation
 	def __enter__(self) -> 'Context':
+		asyncio.ensure_future(self.on_start())
 		return self
 
 	def __exit__(self, exc_type, exc_val, exc_tb):
 		self.root_step.done(exc_type, exc_val, exc_tb)
-		self.on_finish()
+		asyncio.ensure_future(self.on_finish())
 	
 
 

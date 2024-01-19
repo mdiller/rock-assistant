@@ -9,6 +9,32 @@ from scipy.io.wavfile import write
 from pydub import AudioSegment, playback
 import librosa
 
+
+# STUFF FOR VISUALIZING EASE FUNCTIONS
+def visualize_ease(easing_func):
+	import numpy as np
+	import matplotlib.pyplot as plt
+
+	# Parameters
+	duration = 5  # duration in seconds
+	SAMPLE_RATE = 100  # sample rate per second
+
+	# Generating the time array
+	t = np.linspace(0, duration, int(duration * SAMPLE_RATE), False)
+
+	# Plotting
+	plt.figure(figsize=(12, 6))
+
+	plt.subplot(1, 2, 2)
+	plt.plot(t, easing_func(t, duration))
+	plt.title("Easing Func")
+	plt.xlabel("Time (seconds)")
+	plt.ylabel("Value")
+	plt.ylim(0, 1)
+
+	plt.tight_layout()
+	plt.show()
+
 SAMPLE_RATE = 44100
 
 # EASE_PLINK = lambda t, duration: np.exp(-4 * np.log(10) * t / duration)
@@ -31,6 +57,13 @@ def EASE_PLINK(t, duration):
 	result *= fader
 	return result
 
+def EASE_PLINK_standalone(t, duration):
+	result = EASE_PLINK(t, duration)
+	soft_start = 1 - np.exp(-10 * t / (duration / 20))
+	result *= soft_start
+	result /= np.max(result)
+	return result
+
 def EASE_ELASTIC(t, duration):
 	amplitude = 1
 	period = 0.3
@@ -39,6 +72,9 @@ def EASE_ELASTIC(t, duration):
 	result /= np.max(result)
 	result *= EASE_EXP_OUT(t, duration)
 	return result
+
+# visualize_ease(EASE_PLINK_standalone)
+
 
 class WavBuilder():
 	def __init__(self):
@@ -157,7 +193,6 @@ class WavBuilder():
 wav_builder = WavBuilder()
 tempo = 0.2
 
-
 # GOOD WAKE
 wav_builder.add_slide("G3", "C4", tempo, EASE_EXP_IN)
 wav_builder.add_note("G4", tempo * 2, EASE_PLINK)
@@ -169,11 +204,11 @@ wav_builder.add_note("C4", tempo * 2, EASE_PLINK)
 wav_builder.save_and_play("resource/sounds/unwake.wav")
 
 # SUCCESS
-wav_builder.add_note("C5", tempo * 2, EASE_PLINK)
+wav_builder.add_note("C5", tempo * 2, EASE_PLINK_standalone)
 wav_builder.save_and_play("resource/sounds/success.wav")
 
 # IGNORE
-wav_builder.add_note("C4", tempo * 2, EASE_PLINK)
+wav_builder.add_note("C4", tempo * 2, EASE_PLINK_standalone)
 wav_builder.save_and_play("resource/sounds/ignore.wav")
 
 # ERROR
@@ -182,5 +217,8 @@ wav_builder.add_note("A4", tempo * 2, EASE_PLINK)
 wav_builder.save_and_play("resource/sounds/error.wav")
 
 # TASK_START
-wav_builder.add_note("G4", tempo * 2, EASE_PLINK)
+wav_builder.add_note("G4", tempo * 2, EASE_PLINK_standalone)
 wav_builder.save_and_play("resource/sounds/task_start.wav")
+
+
+

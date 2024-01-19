@@ -62,12 +62,13 @@ class AssEngine():
 		await self.local_machine.record_microphone_stop()
 
 	async def transcribe_microphone(self, ctx: Context):
-		with ctx.step(StepType.LOCAL_RECORD):
+		with ctx.step(StepType.LOCAL_RECORD) as step:
 			await ctx.play_sound(AssSound.WAKE)
 			audio_data = await self.local_machine.record_microphone()
-		if audio_data is None:
-			await ctx.play_sound(AssSound.IGNORE)
-			return None
+			if audio_data is None:
+				step.final_state = StepFinalState.NOTHING_DONE
+				return None
+		
 		await ctx.play_sound(AssSound.UNWAKE)
 
 		async with speech_file_lock:
@@ -102,6 +103,7 @@ class AssEngine():
 		self.config.reload()
 		
 		with self.new_ctx(StepType.ASSISTANT_LOCAL, ContextSource.LOCAL_MACHINE) as ctx:
+			print("hi?")
 			prompt_text = await self.transcribe_microphone(ctx)
 
 			if prompt_text is None:
@@ -201,7 +203,7 @@ class AssEngine():
 		response = await func_runner.run_prompt(prompt_text)
 
 		if response and isinstance(response, str):
-			await ctx.say(response)
+			await ctx.say(response, is_finish=True)
 		
 	async def code_writer(self, ctx: Context, file):
 		global loaded_thing
@@ -245,8 +247,6 @@ class AssEngine():
 			with self.new_ctx(StepType.ACTION_BUTTON, ContextSource.LOCAL_MACHINE) as ctx:
 				await ctx.play_sound(AssSound.TASK_START)
 				await self._action_button(ctx, file)
-			result = ctx.final_state
-			await ctx.play_sound(result.sound)
 		except:
 			await ctx.play_sound(AssSound.ERROR)
 			raise

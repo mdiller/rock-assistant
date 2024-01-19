@@ -2,6 +2,7 @@ import datetime
 import asyncio
 import pyaudio
 from pydub import AudioSegment, playback
+from gui.gui import AssistantGui
 
 from utils.settings import settings
 import utils.utils as utils
@@ -15,11 +16,13 @@ class LocalMachine():
 	play_lock: asyncio.Lock = asyncio.Lock()
 	audio: pyaudio.PyAudio = None
 
+	def __init__(self):
+		self.gui: AssistantGui = None
+
 	def init_audio(self):
 		if self.audio is not None:
 			self.audio.terminate()
 		self.audio = pyaudio.PyAudio()
-		
 
 	async def _play_wav(self, decoded_song, lock_set=False):
 		if lock_set:

@@ -1,0 +1,274 @@
+<html>
+
+<head>
+	<link rel="stylesheet" href="https://use.fontawesome.com/releases/v6.5.0/css/all.css">
+</head>
+
+<body>
+	<div id="container">
+		<!-- <i class="fab fa-facebook"></i> -->
+		<div id="header" >
+			Rock Assistant
+		</div>
+		<div id="contents">
+
+		</div>
+	</div>
+</body>
+
+<script>
+
+var CONTAINER = document.getElementById("container");
+var ROOT_DIV = document.getElementById("contents");
+
+function restart_close_timer() {
+	CONTAINER.classList.remove("done");
+	setTimeout(() => {
+		CONTAINER.classList.add("done");
+	}, 100);
+}
+
+var start_time = null;
+function update(context) {
+	if (context.start_time != start_time) {
+		start_time = context.start_time;
+		ROOT_DIV.innerHTML = ""; // reset if we have a new root
+		CONTAINER.classList.remove("done");
+		CONTAINER.classList.remove("idle");
+	}
+	
+	if (context.is_done) {
+		CONTAINER.classList.add("idle");
+	}
+
+	function updateStep(step, parent_element) {
+		var element = document.getElementById(step.id);
+		if (!element) {
+			var icon = "";
+			if (step.icon) {
+				icon = `<i class="${step.icon}"></i>`;
+			}
+			parent_element.insertAdjacentHTML('beforeend', `<div id="${step.id}"><span>${icon}${step.name}</span><span class="loadingspinner"><i class="fas fa-spinner"></i></span></div>`);
+			element = document.getElementById(step.id);
+		}
+		step.classes.forEach(c => {
+			if (!element.classList.contains(c)) {
+				element.classList.add(c)
+			}
+		});
+		element.classList.forEach(c => {
+			if (!step.classes.includes(c)) {
+				element.classList.remove(c);
+			}
+		});
+		if (step.child_steps) {
+			step.child_steps.forEach(child_step => {
+				updateStep(child_step, element);
+			})
+		}
+	}
+	updateStep(context.root_step, ROOT_DIV);
+}
+</script>
+
+
+<style>
+:root {
+	--window-margin: 20px;
+	--window-width: 220px;
+	--window-height: 350px;
+	--window-fade-time: 2s;
+
+	--window-fade-time-wait: 1s;
+	--window-fade-time-fade: calc(var(--window-fade-time) - var(--window-fade-time-wait));
+
+	--border-radius: 10px;
+	--main-padding: 16px;
+	--outer-border: 5px;
+
+	--contents-height: calc(var(--window-height) - 100px);
+
+	--color1: #1b1f27;
+	--color2: #212630;
+	--color3: #282d39;
+
+	--bar-height: 28px;
+}
+
+@font-face {
+  font-family:Work Sans;
+  src:url(https://tools.dillerm.io/lib/fonts/worksans/WorkSans-Regular.woff2) format("woff2"),
+  url(https://tools.dillerm.io/lib/fonts/worksans/WorkSans-Regular.ttf) format("truetype");
+  font-weight:400;
+  font-style:normal
+}
+@font-face {
+  font-family:Work Sans;
+  src:url(https://tools.dillerm.io/lib/fonts/worksans/WorkSans-Italic.woff2) format("woff2"),
+  url(https://tools.dillerm.io/lib/fonts/worksans/WorkSans-Italic.ttf) format("truetype");
+  font-weight:400;
+  font-style:italic
+}
+@font-face {
+  font-family:Work Sans;
+  src:url(https://tools.dillerm.io/lib/fonts/worksans/WorkSans-Bold.woff2) format("woff2"),
+  url(https://tools.dillerm.io/lib/fonts/worksans/WorkSans-Bold.ttf) format("truetype");
+  font-weight:700;
+  font-style:normal
+}
+@font-face {
+  font-family:Work Sans;
+  src:url(https://tools.dillerm.io/lib/fonts/worksans/WorkSans-ExtraBold.woff2) format("woff2"),
+  url(https://tools.dillerm.io/lib/fonts/worksans/WorkSans-ExtraBold.ttf) format("truetype");
+  font-weight:800;
+  font-style:normal
+}
+
+* {
+	box-sizing: border-box;
+	font-family: Work Sans, 'Courier New', Courier, monospace;
+	color: #d0d0d3;
+}
+
+body {
+	background-color: rgba(0, 0, 0, 0);
+	width: var(--window-width);
+	height: var(--window-height);
+	/* border: 1px solid red; */
+	margin: 0px;
+	padding: var(--main-padding);
+
+	-ms-overflow-style: none;
+	scrollbar-width: none;
+}
+
+/* body {
+	opacity: 0;
+	animation: 0.3s fadeInBody forwards;
+}
+@keyframes fadeInBody {
+	to { opacity: 1; }
+} */
+
+#container {
+	background-color: var(--color1);
+	padding: var(--outer-border);
+	/* border: 2px solid var(--color1); */
+	box-shadow: 0px 0px 10px 0px var(--color1);
+	border-radius: var(--border-radius);
+}
+
+#container:not(.idle) {
+	animation: fadeIn 0.5s forwards;
+}
+
+#container.done {
+	animation: fadeOut var(--window-fade-time-fade) ease var(--window-fade-time-wait) forwards;
+}
+#container:not(.done) {
+	opacity: 1;
+}
+
+@keyframes fadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+#header {
+	margin-top: calc(0px - var(--outer-border));
+	background-color: var(--color1);
+	padding: 8px;
+	text-align: center;
+	font-weight: bold;
+	font-size: 18px;
+	color: #d0d0d3;
+}
+
+#contents > div {
+	margin: 0px !important;
+	border-radius: var(--border-radius) !important;
+	height: var(--contents-height);
+}
+
+#contents > div > div,
+#contents > div > div > div > div {
+	background-color: var(--color2);
+}
+
+#contents > div,
+#contents > div > div > div,
+#contents > div > div > div  > div > div {
+	background-color: var(--color3);
+}
+
+#contents div {
+	border-radius: 5px;
+	/* border: 1px solid var(--color2); */
+	margin: 5px;
+	padding: 2px;
+	transition: all 0.25s;
+}
+
+#contents span:first-child {
+	padding: 10px;
+	padding-left: 2px;
+	font-size: 14px;
+	line-height: var(--bar-height);
+}
+
+#contents span:first-child i {
+	color: white;
+	text-align: center;
+	width: 24px;
+}
+
+#contents div.new {
+	animation: 0.5s newBarAnim forwards;
+}
+@keyframes newBarAnim {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}
+
+.loadingspinner {
+	display: none;
+}
+
+#contents div {
+	position: relative;
+}
+
+#contents span.loadingspinner {
+	position: absolute;
+	right: 8px;
+	top: 8px;
+	line-height: var(--bar-height);
+	float: right;
+	animation: rotate 2s linear infinite;
+}
+@keyframes rotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.error {
+	background: #dd431c !important;
+}
+
+.loading {
+	background: #008500 !important;
+}
+.loading .loadingspinner {
+	display: inline-block;
+}
+
+body::-webkit-scrollbar {
+	display: none;
+}
+</style>
+
+</html>
