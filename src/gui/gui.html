@@ -75,7 +75,7 @@ function update(context) {
 <style>
 :root {
 	--window-margin: 20px;
-	--window-width: 220px;
+	--window-width: 240px;
 	--window-height: 350px;
 	--window-fade-time: 2s;
 
@@ -84,13 +84,15 @@ function update(context) {
 
 	--border-radius: 10px;
 	--main-padding: 16px;
-	--outer-border: 5px;
+	--outer-border: 8px;
 
 	--contents-height: calc(var(--window-height) - 100px);
 
+	--color0: #13161b;
 	--color1: #1b1f27;
 	--color2: #212630;
 	--color3: #282d39;
+	--color-highlight: #1369ee;
 
 	--bar-height: 28px;
 }
@@ -151,11 +153,11 @@ body {
 } */
 
 #container {
-	background-color: var(--color1);
+	background-color: var(--color0);
 	padding: var(--outer-border);
 	/* border: 2px solid var(--color1); */
-	box-shadow: 0px 0px 10px 0px var(--color1);
-	border-radius: var(--border-radius);
+	box-shadow: 0px 0px 20px 2px var(--color1);
+	border-radius: calc(var(--border-radius) * 1.75);
 }
 
 #container:not(.idle) {
@@ -180,8 +182,7 @@ body {
 
 #header {
 	margin-top: calc(0px - var(--outer-border));
-	background-color: var(--color1);
-	padding: 8px;
+	padding: 12px;
 	text-align: center;
 	font-weight: bold;
 	font-size: 18px;
@@ -192,6 +193,7 @@ body {
 	margin: 0px !important;
 	border-radius: var(--border-radius) !important;
 	height: var(--contents-height);
+	border: 1px var(--color1) solid;
 }
 
 #contents > div > div,
@@ -210,7 +212,7 @@ body {
 	/* border: 1px solid var(--color2); */
 	margin: 5px;
 	padding: 2px;
-	transition: all 0.25s;
+	transition: all 0.5s;
 }
 
 #contents span:first-child {
@@ -221,9 +223,13 @@ body {
 }
 
 #contents span:first-child i {
-	color: white;
+	color: var(--color-highlight);
 	text-align: center;
 	width: 24px;
+}
+
+#contents .loading span:first-child i {
+	color: white;
 }
 
 #contents div.new {
@@ -260,7 +266,7 @@ body {
 }
 
 .loading {
-	background: #008500 !important;
+	background: var(--color-highlight) !important;
 }
 .loading .loadingspinner {
 	display: inline-block;

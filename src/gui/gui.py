@@ -62,7 +62,6 @@ class AssistantGuiWindow(QMainWindow):
 	def restartCloseTimer(self):
 		if self.done:
 			self.closeTimer.start()
-			print("running!")
 			self.web.page().runJavaScript("restart_close_timer()")
 	
 	# ON HOVER HANDLER
