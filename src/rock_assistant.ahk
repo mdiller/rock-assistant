@@ -1,10 +1,24 @@
+/*
+PROMPT:
+
+[- Used So Far: 0.0387¢ | 294 tokens -]
+*/
 #Persistent
 #SingleInstance force
 SetBatchLines, -1
 
+print(text)
+{
+	logFile := "C:\dev\projects\chatgpt_rock_runner\_temp\ahk_log.txt"
+	FormatTime, now,, yyyy-MM-ddTHH:mm:ss
+	line := now . "." . A_MSec . "|" . text
+	
+	FileAppend, `n%line%, %logFile%
+}
 
 GetOpenFile()
 {
+	print("GetOpenFile()")
 	temp := ClipboardAll ; Store all clipboard contents in temp
 	Clipboard := ""
 	Send, +!c ; Send Shift+Alt+C to run vscode/obsidian copy active filepath to clipboard
@@ -16,6 +30,7 @@ GetOpenFile()
 
 Trigger_Assistant(url_end)
 {
+	print("Trigger_Assistant()")
 	WinGet, activeWin, ID, A ; Get the active window ID
     WinGetTitle, title, ahk_id %activeWin% ; Get the title of the active window
 
@@ -31,7 +46,9 @@ Trigger_Assistant(url_end)
 		oWhr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
 		oWhr.Open("GET", url, false)
 		oWhr.SetRequestHeader("Content-Type", "application/json")
+		print("SendingWebRequest")
 		oWhr.Send()
+		print("WebRequestFinished")
 	}
 }
 

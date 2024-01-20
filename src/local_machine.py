@@ -46,13 +46,11 @@ class LocalMachine():
 			self.mic_lock.release()
 
 	# start recording and wait until the recording has finished
-	async def record_microphone(self):
+	async def record_microphone(self, logger):
 		if self.mic_lock.locked():
 			self.mic_lock.release()
 		await self.mic_lock.acquire()
 		self.init_audio()
-		print("listening...")
-
 
 		device_id_map = {}
 		# check devices connected
@@ -60,7 +58,7 @@ class LocalMachine():
 		numdevices = info.get('deviceCount')
 		for i in range(0, numdevices):
 			if (self.audio.get_device_info_by_host_api_device_index(0, i).get('maxInputChannels')) > 0:
-				# print(i, " - ", audio.get_device_info_by_host_api_device_index(0, i).get('name'))
+				# logger.log(i, " - ", audio.get_device_info_by_host_api_device_index(0, i).get('name'))
 				device_id_map[self.audio.get_device_info_by_host_api_device_index(0, i).get('name')] = i
 		
 		microphone_priorities = [
@@ -73,7 +71,7 @@ class LocalMachine():
 				for name in device_id_map:
 					if devicenamepart in name:
 						audio_device_index = device_id_map[name]
-						print(f"listening via: '{name}'")
+						logger.log(f"listening via: '{name}'")
 						break
 		
 		audio_queue = asyncio.Queue()
@@ -101,7 +99,7 @@ class LocalMachine():
 			await asyncio.wait_for(self.mic_lock.acquire(), timeout = MICROPHONE_TIMEOUT_SECONDS)
 			self.mic_lock.release()
 		except asyncio.exceptions.TimeoutError:
-			print("ignoring: recording too long")
+			logger.log("ignoring: recording too long")
 			stream.stop_stream()
 			stream.close()
 			return None
@@ -113,7 +111,7 @@ class LocalMachine():
 		
 		elapsed_time = datetime.datetime.now() - stream_starttime
 		if elapsed_time < datetime.timedelta(seconds=1):
-			print("ignoring: wasnt recording long enough")
+			logger.log("ignoring: wasnt recording long enough")
 			return None
 
 		# Create an AudioSegment to store the audio data

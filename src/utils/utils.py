@@ -5,7 +5,9 @@ from colorama import Fore
 # better executor caller
 
 
-def print_color(text, color):
+def print_color(text, color = None):
+	if color is None:
+		print(text)
 	print(f"{color}{text}{Fore.WHITE}")
 
 def printerr(text):

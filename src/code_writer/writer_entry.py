@@ -10,12 +10,6 @@ from context import Context, StepFinalState
 import chat.conversator as conv
 import re
 
-def print_color(text, color):
-	print(f"{color}{text}{Fore.WHITE}")
-
-def printerr(text):
-	print_color(text, Fore.RED)
-
 DEFAULT_FILE = __file__
 # code_file = CodeFile("C:\dev\projects\chatgpt_rock_runner\src\code_writer\example.py")
 # code_file = CodeFile("C:/dev/projects/chatgpt_rock_runner/src/utils/soundmaker.py")
@@ -43,47 +37,49 @@ You are a code assistant designed to help me with my code. I will send you entir
 """
 async def run_thing(ctx: Context, file: str = DEFAULT_FILE) -> StepFinalState:
 	code_file = CodeFile(file)
-	print(f"] Running CodeWriter on: {file}")
+	ctx.log(f"] Running CodeWriter on: {file}")
 
 	code_file.metadata.print_args()
-	print_color("CODE:", Fore.CYAN)
+	ctx.log("CODE:", Fore.CYAN)
 	lines = code_file.content.split("\n")
 	max_lines = 25
 	show_ends = 5
 	if len(lines) > max_lines:
 		for i in range(show_ends):
-			print_color(lines[i], Fore.BLACK)
-		print_color(f"... ({len(lines) - (2 * show_ends)} more lines) ...", Fore.BLACK)
+			ctx.log(lines[i], Fore.BLACK)
+		ctx.log(f"... ({len(lines) - (2 * show_ends)} more lines) ...", Fore.BLACK)
 	else:
-		print_color(code_file.content, Fore.BLACK)
+		ctx.log(code_file.content, Fore.BLACK)
 	code_file.write()
 
-	print_color("Running...", Fore.CYAN)
+	ctx.log("Running...", Fore.CYAN)
 
 	prompt_pattern = f"\n([^\S\r\n]*){code_file.language.inline_comment} PROMPT: (.+)(?:\n|$)"
 	prompt = code_file.metadata.get("prompt").strip()
+	
+	prompt_pattern = re.compile(prompt_pattern)
 
 	if prompt != "":
 		conversator = ctx.get_conversator()
 		conversator.input_system(parse_system_prompt(SYSTEM_PROMPT, code_file.language))
 		conversator.input_user(f"I have the following {code_file.language.name} code:\n```{code_file.language.extension}\n{code_file.content}\n```\nPROMPT: {prompt}")
-		print("] Querying...")
+		ctx.log("] Querying...")
 		response = await conversator.get_response()
 		token_count = conversator.get_token_count()
-		print(f"] Token Count {token_count}")
+		ctx.log(f"] Token Count {token_count}")
 		match = re.search(f"```{code_file.language.codeblock_pattern}\n(.*)\n```", response, re.MULTILINE | re.DOTALL)
 		if not match:
-			printerr("Couldn't match regex for code")
-			print_color("Response:", Fore.CYAN)
-			print_color(response, Fore.BLACK)
+			ctx.log("Couldn't match regex for code", Fore.RED)
+			ctx.log("Response:", Fore.CYAN)
+			ctx.log(response, Fore.BLACK)
 			return StepFinalState.NOTHING_DONE
 		else:
-			print("] Writing new code!")
+			ctx.log("] Writing new code!")
 			new_code = match.group(1)
 			code_file.content = new_code
 			code_file.metadata.set("tokens", code_file.metadata.get("tokens") + token_count.input_count + token_count.output_count)
 			code_file.metadata.set("price", code_file.metadata.get("price") + float(token_count.get_total_price().cent_amount))
-			print("] Removing prompt that caused this")
+			ctx.log("] Removing prompt that caused this")
 			code_file.metadata.set("prompt", "")
 			code_file.write()
 	elif re.search(prompt_pattern, code_file.content):
@@ -94,30 +90,29 @@ async def run_thing(ctx: Context, file: str = DEFAULT_FILE) -> StepFinalState:
 		conversator.input_system(parse_system_prompt(SYSTEM_PROMPT_INLINE, code_file.language))
 		conversator.input_user(prompt)
 		
-		print("] Querying...")
+		ctx.log("] Querying...")
 		response = await conversator.get_response()
 		token_count = conversator.get_token_count()
 
 		match = re.search(f"```{code_file.language.codeblock_pattern}\n(.*)\n```", response, re.MULTILINE | re.DOTALL)
 		if not match:
-			printerr("Couldn't match regex for code")
-			print_color("Response:", Fore.CYAN)
-			print_color(response, Fore.BLACK)
+			ctx.log("Couldn't match regex for code", Fore.RED)
+			ctx.log("Response:", Fore.CYAN)
+			ctx.log(response, Fore.BLACK)
 			return StepFinalState.CHAT_ERROR
 		else:
-			print("] Writing new code!")
+			ctx.log("] Writing new code!")
 			new_code = match.group(1)
 			new_code = fix_indentation(new_code)
 			new_code = "\n".join(map(lambda line: f"{whitespace}{line}", new_code.split("\n")))
 			new_code = f"\n{new_code}\n"
-			code_file.content = re.sub(prompt_pattern, new_code, code_file.content)
+			NEWCODEPLACEHOLDER = "{NEWCODEPLACEHOLDER}"
+			code_file.content = re.sub(prompt_pattern, NEWCODEPLACEHOLDER, code_file.content)
+			code_file.content = code_file.content.replace(NEWCODEPLACEHOLDER, new_code)
 			code_file.metadata.set("tokens", code_file.metadata.get("tokens") + token_count.input_count + token_count.output_count)
 			code_file.metadata.set("price", code_file.metadata.get("price") + float(token_count.get_total_price().cent_amount))
 			code_file.write()
-		print("] Querying...")
-		response = await conversator.get_response()
-		token_count = conversator.get_token_count()
 	else:
-		print("No prompt! Nothing to do!")
+		ctx.log("No prompt! Nothing to do!")
 		return StepFinalState.NOTHING_DONE
 	return StepFinalState.SUCCESS

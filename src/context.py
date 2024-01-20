@@ -8,6 +8,8 @@ import asyncio
 from collections import OrderedDict
 import datetime
 from enum import Enum
+import os
+import yaml
 import typing
 from openai import OpenAI
 from apis.audio import AudioApi
@@ -15,8 +17,9 @@ from gui.gui import AssistantGui
 
 from utils.settings import settings
 from local_machine import LocalMachine
-from obsidian import AssistantConfig
+import obsidian
 from utils.settings import Settings
+from utils.utils import print_color
 
 # make a thing to move the decimal place manually for me
 class PreciseMoney():
@@ -82,33 +85,37 @@ class StepFinalState(Enum):
 
 # could use <font-awesome-icon :icon="['fas', 'user-secret']" /> as our main assistant icon
 class StepType(Enum):
-	ASSISTANT_LOCAL = ("Assistant",       "fas fa-user-tie")
+	ASSISTANT_LOCAL = ("Assistant",       "fas fa-user")
 	THOUGHT_LOCAL = ("Record Thought",    "fas fa-lightbulb")
 	ACTION_BUTTON = ("Action Button",     "fas fa-circle-play")
-	WEB_ASSISTANT = ("Phone Assistant",   "fas fa-user-tie")
+	WEB_ASSISTANT = ("Phone Assistant",   "fas fa-user")
 	WEB_THOUGHT = ("Phone Thought",       "fas fa-lightbulb")
 
 	CODE_WRITER = ("Code Assistant",      "fas fa-pencil")
 	OBSIDIAN_RUNNER = ("Obsidian Runner", "fas fa-file-lines")
 
 	FUNCTION = ("Function",          "fas fa-terminal")
-	AI_CHAT = ("OpenAI Chat",        "fas fa-cat")
-	AI_INTERPRETER = ("OpenAI Chat", "fas fa-brain")
+	AI_CHAT = ("OpenAI Chat",        "fas fa-robot")
 	LOCAL_RECORD = ("Listening",     "fas fa-microphone")
 	TRANSCRIBE = ("Transcribing",    "fas fa-feather-pointed")
 	TTS = ("TTS",                    "fas fa-comment-dots")
+	SPEAKING = ("Speaking",          "fas fa-person-harassing")
 	def __init__(self, pretty_name: str, icon: str):
 		self.pretty_name = pretty_name
 		self.icon = icon
 
 class LogMessage():
-	def __init__(self, text: str):
+	def __init__(self, text: str, timestamp: datetime.datetime = None):
 		self.text = text
-		self.timestamp = datetime.datetime.now()
+		self.timestamp = timestamp
+		if self.timestamp is None:
+			self.timestamp = datetime.datetime.now()
+	
+	def __repr__(self):
+		return f"{self.timestamp.isoformat()} | {self.text}"
 
 # ADD STEP DEPTH HERE
 class Step():
-	logs: typing.List[str]
 	def __init__(self, ctx: Context, step_type: StepType, parent: 'Step' = None, name: str = None):
 		self.ctx = ctx
 		self.step_type = step_type
@@ -125,15 +132,33 @@ class Step():
 		self.tokens = 0
 		self.child_steps: typing.List[Step] = []
 
-		self.logs = []
-		self.logs.append(f"] Entering Step: {step_type.pretty_name}")
-		print(f"] Entering Step: {step_type.pretty_name}")
+		self.logs: typing.List[LogMessage] = []
+		log_message = f"Step: {step_type.pretty_name}"
+		if name:
+			log_message += f": {self.name}"
+		self.log(log_message)
+		print(log_message)
+	
+	def log(self, text: str):
+		self.logs.append(LogMessage(text))
+	
+	def get_log_postfix(self):
+		duration_ms = int((self.time_end - self.time_start).total_seconds() * 1000)
+		items = [ f"{duration_ms:,} ms" ]
+		if self.price:
+			items.append(PreciseMoney(self.price).cent_amount + " cents")
+		items = ", ".join(items)
+		return f"[{items}]"
 	
 	def done(self, exc_type, exc_val, exc_tb):
 		self.time_end = datetime.datetime.now()
 		if exc_type is not None:
 			self.status = StepStatus.STOPPED
-			self.final_state = StepFinalState.EXCEPTION # TODO: add thing here for StopException and propogating to do StepFinalState.CHILD_STOPPED and stopping for IGNORE etc.
+			child_errors = list(filter(lambda s: s.final_state == StepFinalState.EXCEPTION, self.child_steps))
+			if child_errors:
+				self.final_state = StepFinalState.CHILD_STOPPED
+			else:
+				self.final_state = StepFinalState.EXCEPTION # TODO: add thing here for StopException and stopping for IGNORE etc.
 		else:
 			self.status = StepStatus.COMPLETED
 		if self.final_state is None:
@@ -158,14 +183,13 @@ class Step():
 		for i, step in enumerate(self.child_steps):
 			child_jsons.append(step.toGuiJson(f"{step_id}-{i}"))
 		classes = []
-		if self.status == StepStatus.RUNNING:
-			if id_prefix != "": # don't put loading on the root step
-				classes.append("loading")
+		if self.status == StepStatus.RUNNING and len(self.child_steps) == 0:
+			classes.append("loading")
 		if self.final_state == StepFinalState.EXCEPTION:
 			classes.append("error")
 		return OrderedDict({
 			"id": step_id,
-			"name": self.step_type.pretty_name,
+			"name": self.step_type.pretty_name if self.name is None else self.name,
 			"icon": self.step_type.icon,
 			"classes": classes,
 			"child_steps": child_jsons,
@@ -184,7 +208,7 @@ if TYPE_CHECKING:
 	import chat.conversator
 # TODO: replace localmachine etc below with interfaces in future
 class Context():
-	def __init__(self, root_step: Step, openai_client: OpenAI, local_machine: LocalMachine, config: AssistantConfig, source: ContextSource):
+	def __init__(self, root_step: Step, openai_client: OpenAI, local_machine: LocalMachine, config: obsidian.AssistantConfig, source: ContextSource):
 		self.root_step = root_step
 		self.root_step.ctx = self
 		self.openai_client = openai_client
@@ -192,40 +216,48 @@ class Context():
 		self.current_step = self.root_step
 		self.ass_config = config
 		self.audio_api = AudioApi(openai_client, config)
-		self.converators: typing.List['chat.conversator.Conversator'] = []
+		self.conversators: typing.List['chat.conversator.Conversator'] = []
 		self.source = source
 		self.final_state: StepFinalState = None
 		self.target: str = None
 		self.finish_audio_response: str = None
 		self.say_log: typing.List[str] = []
 	
+	# METHODS FOR STEPS TO USE
 	def get_conversator(self) -> 'chat.conversator.Conversator':
 		import chat.conversator
 		conversator = chat.conversator.Conversator(self)
-		self.log(f"Created conversator #{len(self.converators)}")
-		self.converators.append(conversator)
+		self.log(f"Created conversator #{len(self.conversators)}")
+		self.conversators.append(conversator)
 		return conversator
 	
-	def log(self, text: str):
-		print(text)
-		self.current_step.logs.append(LogMessage(text))
-	
-	async def _play_audio(self, filename: str):
-		if self.source == ContextSource.LOCAL_MACHINE:
-			await self.local_machine.play_wav(filename, False)
+	def log(self, text: str, color = None):
+		print_color(text, color)
+		self.current_step.log(text)
 
 	async def say(self, text: str, is_finish=False):
+		if len(text) > 500:
+			raise Exception(f"Too many characters {len(text)} passed to tts")
 		with self.step(StepType.TTS):
-			self.log(f"> SAYING: '{text}'")
+			self.log(f"TEXT: \"{text}\"")
 			self.say_log.append(text)
 			filename = await self.audio_api.generate_tts(text)
 		if is_finish:
 			self.finish_audio_response = filename
-		await self._play_audio(filename)
+		await self._play_audio(filename, is_finish)
 	
 	async def play_sound(self, sound: AssSound):
 		await self._play_audio(sound.filepath)
 	
+	async def _play_audio(self, filename: str, is_finish=False):
+		if self.source == ContextSource.LOCAL_MACHINE:
+			if is_finish:
+				with self.step(StepType.SPEAKING):
+					await self.local_machine.play_wav(filename, True)
+			else:
+				await self.local_machine.play_wav(filename, False)
+	
+	# STEP MANAGEMENT
 	def step(self, step_type: StepType, step_name: str = None) -> Step:
 		step = Step(self, step_type, self.current_step, step_name)
 		self.current_step.child_steps.append(step)
@@ -237,8 +269,10 @@ class Context():
 		self.current_step = self.current_step.parent
 		self.update_gui()
 
+	# GUI STUFF
 	def update_gui(self):
-		self.local_machine.gui.update(self.toGuiJson())
+		if self.source == ContextSource.LOCAL_MACHINE:
+			self.local_machine.gui.update(self.toGuiJson())
 
 	def toGuiJson(self):
 		return {
@@ -256,13 +290,14 @@ class Context():
 			self.finish_audio_response = self.final_state.sound.filepath
 			await self.play_sound(self.final_state.sound)
 		self.update_gui()
+		self.saveLog()
 	
 	async def on_start(self):
 		self.update_gui()
-		self.local_machine.gui.show()
+		if self.source == ContextSource.LOCAL_MACHINE:
+			self.local_machine.gui.show()
 		pass
 	
-	# "WITH" implementation
 	def __enter__(self) -> 'Context':
 		asyncio.ensure_future(self.on_start())
 		return self
@@ -270,6 +305,78 @@ class Context():
 	def __exit__(self, exc_type, exc_val, exc_tb):
 		self.root_step.done(exc_type, exc_val, exc_tb)
 		asyncio.ensure_future(self.on_finish())
+
+	def getLogLines(self, indent_str="\t", step: Step = None, indent_level = 0) -> typing.List[LogMessage]:
+		if step is None:
+			# root step: do final sorting etc here
+			lines = self.getLogLines(indent_str, self.root_step, indent_level)
+			lines.sort(key=lambda line: line.timestamp)
+			return lines
+		else:
+			lines = []
+			# TODO: add some timing info etc to the first line in the step's log
+			step_prefix = "> "
+			for i, line in enumerate(step.logs):
+				text_prefix = indent_str * indent_level
+				text_postfix = ""
+				if i == 0 and indent_level > 0:
+					text_prefix = text_prefix[:0 - len(step_prefix)] + step_prefix
+					text_postfix = " " + step.get_log_postfix()
+				text = f"{text_prefix}{line.text}{text_postfix}"
+				lines.append(LogMessage(text, line.timestamp))
+			for child in step.child_steps:
+				lines.extend(self.getLogLines(indent_str, child, indent_level + 1))
+			return lines
+		
+	def getFullPrice(self, step: Step = None):
+		if step is None:
+			price = self.getFullPrice(self.root_step)
+			return PreciseMoney(price)
+		price = 0
+		if step.price:
+			price += step.price
+		for child in step.child_steps:
+			price += self.getFullPrice(child)
+		return price
+	
+	def toMarkdown(self):
+		result = ""
+		timestamp = self.root_step.time_start.isoformat()
+		duration = (self.root_step.time_end - self.root_step.time_start).total_seconds()
+		metadata = dict(OrderedDict([
+			("date", str(self.root_step.time_start.strftime('%Y-%m-%d'))),
+			("timestamp", str(timestamp)),
+			("duration", f"{duration:.4f}s"),
+			("price", self.getFullPrice().cent_amount),
+			("source", self.source.name),
+			("final_state", self.final_state.name),
+			("target", self.target),
+			("root_step_type", self.root_step.step_type.name),
+		]))
+		conversators_md = []
+		for i, conversator in enumerate(self.conversators):
+			header = f"<div class=\"rock-assistant-out\"><span>Conversator #{i}</span><span></span></div>"
+			conversators_md.append(f"{header}\n\n{conversator.to_markdown()}\n")
+		conversators_md = "\n".join(conversators_md)
+		log_lines = "\n".join(map(str, self.getLogLines("      ")))
+		result = f"---\n{yaml.safe_dump(metadata, sort_keys=False).strip()}\n---\n"
+		result += f"```\n{log_lines}\n```\n"
+		result += conversators_md
+		return result
+	
+	def saveLog(self):
+		logs_dir = os.path.join(obsidian.ROOT_DIR, self.ass_config.functions_dir, "../logs")
+		if not os.path.exists(logs_dir):
+			os.makedirs(logs_dir)
+		markdown = self.toMarkdown()
+		log_filename = f"{self.root_step.time_start.strftime('%Y-%m-%d_%H-%M-%S')}_{self.root_step.step_type}.md"
+		log_filepath = os.path.join(logs_dir, log_filename)
+		with open(log_filepath, "w+", encoding="utf-8") as f:
+			f.write(markdown)
+		log_filepath = os.path.join(logs_dir, "latest_log.md")
+		with open(log_filepath, "w+", encoding="utf-8") as f:
+			f.write(markdown)
+
 	
 
 

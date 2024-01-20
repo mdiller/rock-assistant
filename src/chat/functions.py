@@ -12,6 +12,7 @@ import traceback
 import json
 import inspect
 from  openai.types.chat.chat_completion_message import FunctionCall
+from chat.conversator import ConvGenArgs
 from context import Context, StepFinalState, StepType
 
 
@@ -19,20 +20,16 @@ from obsidian import ObsidianFile, AssistantConfig
 import obsidian
 
 class AssFunctionArg():
-	name: str
-	description: str
-	type: typing.Type
-	type_name: str
-	optional: bool
-	def __init__(self, name, description):
+	def __init__(self, name: str, description: str):
 		self.name = name
 		self.description = description
-		self.type = None
-		self.type_name = None
-		self.optional = False
+		self.type: typing.Type = None
+		self.type_name: str = None
+		self.optional: bool = False
 	
 	def toDoc(self):
-		result =  f"{self.name}: {self.type}"
+		typestr = str(self.type).split("'")[1]
+		result =  f"{self.name}: {typestr}"
 		if self.optional:
 			result += f" = None"
 		return result
@@ -162,7 +159,7 @@ class SpecialFuncArgType():
 		self.name = name
 		self.description = description
 	
-	def __repl__(self):
+	def toDoc(self):
 		return f"{self.name} ; {self.description}"
 
 class SpecialVariable():
@@ -204,7 +201,7 @@ class FunctionsRunner():
 				self.functions.append(func)
 	
 		self.extra_func_arg_types = [
-			SpecialFuncArgType("DayFormat", "a string representing a day, in the format YYYY-MM-DD")
+			SpecialFuncArgType("day", "a string representing a day, in the format YYYY-MM-DD")
 		]
 		self.special_variables = [
 			SpecialVariable("CLIPBOARD", "The user's clipboard contents as text", lambda: "<clipdata>")
@@ -217,15 +214,16 @@ class FunctionsRunner():
 		repl_dict = {}
 		today = datetime.datetime.now() - datetime.timedelta(hours=4) # anything before 4am is part of the previous day
 		repl_dict["ADDITIONAL_INFO"] = "today: " + today.strftime("%Y-%m-%d (%A)")
-		repl_dict["ARG_TYPES"] = "\n".join(map(str, self.extra_func_arg_types))
+		repl_dict["ARG_TYPES"] = "\n".join(map(lambda f: f.toDoc(), self.extra_func_arg_types))
 		repl_dict["COMMANDS"] = "\n".join(map(lambda f: f.toDoc(), self.functions))
 		for key in repl_dict:
 			text = text.replace(f"{{{key}}}", repl_dict[key])
 		return text
 	
 	def parse_func_call(self, text: str) -> FunctionCall:
+		self.special_variables = []
 		arg_pattern = f"(\"[^\"]*\"|{'|'.join(map(lambda v: v.name, self.special_variables))})"
-		args_pattern = f"(?:|{arg_pattern}|{arg_pattern}(?:, ?{arg_pattern}){1, 10})"
+		args_pattern = f"(?:|{arg_pattern}|{arg_pattern}(?:, ?{arg_pattern})+)"
 		pattern = f"^([A-Z_]+)(?:\({args_pattern}\)|)$"
 		match = re.search(pattern, text)
 		if not match:
@@ -237,7 +235,9 @@ class FunctionsRunner():
 		for i in range(1, len(groups)):
 			val = groups[i]
 			if val is None:
-				break
+				continue
+			if val and val[0] == '"' and val[-1] == '"':
+				val = val[1:-1]
 			unparsed_args.append(val)
 		# TODO: properly parse args (should have nice extensible system for this)
 		return FunctionCall(func_name, unparsed_args)
@@ -247,7 +247,12 @@ class FunctionsRunner():
 		conversator = self.ctx.get_conversator()
 		conversator.input_system(self.get_system_prompt())
 		conversator.input_user(prompt)
-		responses = await conversator.get_responses(3)
+		responses = await conversator.get_responses(
+			ConvGenArgs(
+				step_name="Interpret Func",
+				response_count=3,
+				output_limit=25)
+		)
 		
 		for response in responses:
 			func_call = self.parse_func_call(response)
@@ -261,8 +266,11 @@ class FunctionsRunner():
 		func_call = await self.interpret_prompt(prompt)
 		if func_call.func_name == "GIVE_UP":
 			conversator = self.ctx.get_conversator()
+			conversator.input_system("Keep your responses brief, at most two sentances.")
 			conversator.input_user(prompt)
-			return await conversator.get_response()
+			return await conversator.get_response(
+				ConvGenArgs(output_limit=60)
+			)
 		else:
 			return await self._run_func(func_call)
 	
@@ -310,7 +318,7 @@ class FunctionsRunner():
 			if isinstance(response, StepFinalState):
 				return response
 			elif isinstance(response, str):
-				await self.ctx.say(response)
+				await self.ctx.say(response, is_finish=True)
 		else:
 			return StepFinalState.SUCCESS
 

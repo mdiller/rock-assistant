@@ -1,17 +1,9 @@
 from __future__ import annotations
 from enum import Enum
-import os
-import openai
-import functools
-import asyncio
 from context import Context, PreciseMoney, StepType
-from chat.functions import AssFunction, FunctionsRunner
 import typing
 from collections import OrderedDict
 import tiktoken
-import datetime
-import json
-import traceback
 
 from openai import OpenAI
 from openai.types.chat import ChatCompletion
@@ -49,6 +41,14 @@ class ConversatorMessage:
 
 		return f"> {self.role.data_name.upper()}\n\n{text}\n"
 
+# TODO: add good support for serializing this and for having model as an arg for this
+# arguments for the generation of new content
+class ConvGenArgs():
+	def __init__(self, step_name: str = None, response_count: int = 1, output_limit: int = None):
+		self.step_name = step_name
+		self.response_count = response_count
+		self.output_limit = output_limit
+
 class Conversator:
 	def __init__(self, ctx: Context):
 		self.ctx = ctx
@@ -65,32 +65,35 @@ class Conversator:
 		self._input_message(ConversatorRole.SYSTEM, message)
 
 	def input_user(self, message):
-		self._input_message(ConversatorRole.SYSTEM, message)
+		self._input_message(ConversatorRole.USER, message)
 
 	def input_self(self, message):
 		self._input_message(ConversatorRole.ASSISTANT, message)
 	
-	def _get_response(self, response_count: int = 1):
+	def _get_response(self, args: ConvGenArgs):
 			return self.openai_client.chat.completions.create(
 				model="gpt-3.5-turbo",
 				messages=list(map(lambda m: m.toJson(), self.messages)),
-				n=response_count)
+				n=args.response_count,
+				max_tokens=args.output_limit)
 	
-	async def get_response(self) -> str:
-		messages = await self.get_responses(1)
+	async def get_response(self, args: ConvGenArgs = None) -> str:
+		messages = await self.get_responses(args)
 		return messages[0]
 
-	async def get_responses(self, response_count: int = 1) -> typing.List[str]:
+	async def get_responses(self, args: ConvGenArgs = None) -> typing.List[str]:
+		if args is None:
+			args = ConvGenArgs()
 		response: ChatCompletion
-		with self.ctx.step(StepType.AI_CHAT):
-			response = await utils.run_async(lambda: self._get_response(response_count))
+		with self.ctx.step(StepType.AI_CHAT, args.step_name):
+			response = await utils.run_async(lambda: self._get_response(args))
 			messages = list(map(lambda c: c.message.content, response.choices))
 
 			counter = self.get_token_count()
 			tokens = counter.input_count + counter.output_count
 			for message in messages:
 				tokens += len(self.tokenizer.encode(message))
-			self.ctx.current_step.price = counter.get_total_price()
+			self.ctx.current_step.price = counter.get_total_price().micro_cents
 			self.ctx.current_step.tokens += tokens
 		
 		self_message = ConversatorMessage(messages[0], ConversatorRole.ASSISTANT, messages)

@@ -52,22 +52,18 @@ class AssEngine():
 			self.config,
 			source)
 
-	async def log_conversation(self, conversation):
-		conversation_file = obsidian.file(self.config.conversation_log)
-		conversation_file.content = conversation.to_markdown()
-		conversation_file.ass_output = None
-		conversation_file.write()
-
 	async def transcribe_microphone_stop(self):
 		await self.local_machine.record_microphone_stop()
 
 	async def transcribe_microphone(self, ctx: Context):
 		with ctx.step(StepType.LOCAL_RECORD) as step:
 			await ctx.play_sound(AssSound.WAKE)
-			audio_data = await self.local_machine.record_microphone()
+			audio_data = await self.local_machine.record_microphone(ctx)
 			if audio_data is None:
+				ctx.log("audio record cancelled")
 				step.final_state = StepFinalState.NOTHING_DONE
 				return None
+			ctx.log(f"{audio_data.duration_seconds:.2f} seconds of audio recorded")
 		
 		await ctx.play_sound(AssSound.UNWAKE)
 
@@ -76,14 +72,13 @@ class AssEngine():
 
 			
 			with ctx.step(StepType.TRANSCRIBE):
-				print("transcribing...")
 				spoken_text = await self.audio_api.transcribe(SPEECH_TEMP_FILE)
-				print("TRANSCRIPTION: " + spoken_text)
+				ctx.log("TRANSCRIPTION: " + spoken_text)
 
 		spoken_text = spoken_text.strip()
 		
 		if spoken_text == "" or spoken_text == ".":
-			print("ignoring: nothing was said")
+			ctx.log("ignoring: nothing was said")
 			return None
 		
 		return spoken_text
@@ -103,7 +98,6 @@ class AssEngine():
 		self.config.reload()
 		
 		with self.new_ctx(StepType.ASSISTANT_LOCAL, ContextSource.LOCAL_MACHINE) as ctx:
-			print("hi?")
 			prompt_text = await self.transcribe_microphone(ctx)
 
 			if prompt_text is None:
@@ -140,11 +134,11 @@ class AssEngine():
 						prompt_file.metadata["assistant"][key] = default_config[key]
 				prompt_file.generate_metadata()
 				prompt_file.write()
-				print("Wrote default args")
+				ctx.log("Wrote default args")
 				return False
 			
 			if prompt_file.metadata["assistant"].get("action") not in valid_actions:
-				print("Invalid action given")
+				ctx.log("Invalid action given")
 				return False
 
 			ass_config = prompt_file.metadata.get("assistant", {})
@@ -173,11 +167,9 @@ class AssEngine():
 					elif kind == "ASSISTANT":
 						conversator.input_self(content)
 
-				print("gpt...")
+				ctx.log("gpt...")
 				response = await conversator.get_response()
-				print(f"ASSISTANT> {response}")
-
-				await self.log_conversation(conversator)
+				ctx.log(f"ASSISTANT> {response}")
 
 				response = AssOutput(response, conversator.get_token_count())
 			else:
@@ -216,19 +208,19 @@ class AssEngine():
 			step.final_state = await writer_entry.run_thing(ctx, file)
 	
 	async def run_function(self, ctx: Context, name: str, args: typing.List[str]):
-		print(f"> Running func: {name}")
+		ctx.log(f"Running func: {name}")
 		func_runner = functions.FunctionsRunner(self.config.functions_dir, ctx)
 		await func_runner.run_func(name, args)
 	
 	async def web_prompt(self, prompt: str):
 		with self.new_ctx(StepType.WEB_ASSISTANT, ContextSource.WEB) as ctx:
 			await self.prompt_assistant(ctx, prompt)
-		return ctx.last_played_audio_file
+		return ctx.finish_audio_response
 
 	async def web_thought(self, thought: str):
 		with self.new_ctx(StepType.WEB_ASSISTANT, ContextSource.WEB) as ctx:
 			await self.run_function(ctx, "write_thought", [ thought ])
-		return ctx.last_played_audio_file
+		return ctx.finish_audio_response
 
 	async def _action_button(self, ctx: Context, file: str = None):
 		if file is None:
@@ -243,13 +235,10 @@ class AssEngine():
 		# await self.run_function("write_thought", [ "a thought" ])
 
 	async def action_button(self, file: str = None):
-		try:
-			with self.new_ctx(StepType.ACTION_BUTTON, ContextSource.LOCAL_MACHINE) as ctx:
-				await ctx.play_sound(AssSound.TASK_START)
-				await self._action_button(ctx, file)
-		except:
-			await ctx.play_sound(AssSound.ERROR)
-			raise
+		with self.new_ctx(StepType.ACTION_BUTTON, ContextSource.LOCAL_MACHINE) as ctx:
+			await ctx.play_sound(AssSound.TASK_START)
+			await self._action_button(ctx, file)
+
 	
 	async def on_startup(self):
 		# result = test_thing()
