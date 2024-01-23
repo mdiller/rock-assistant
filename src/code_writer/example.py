@@ -1,8 +1,3 @@
-'''''
-PROMPT:
-ok add a web request to send "hello there" as a discord message to a discord message url when they pass one in as an argument in the command line
-[- Used So Far: 0.0743¢ | 422 tokens -]
-'''''
 import requests
 import sys
 

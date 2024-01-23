@@ -1,3 +1,8 @@
+'''''
+PROMPT:
+
+[- Used So Far: 0.0426¢ | 286 tokens -]
+'''''
 import os
 import re
 import datetime
@@ -125,17 +130,28 @@ class ObsidianFile():
 		with open(self.path, "w+", encoding="utf8") as f:
 			f.write(text)
 
-	def add_note(self, text):
-		current_time = datetime.datetime.now().strftime("%I:%M %p")
-		if current_time.startswith("0"):
-			current_time = current_time[1:]
-		timestamp = f"\n<span class=\"dillerm-timestamp\">🕥 {current_time}</span>\n"
-		if timestamp in self.content:
+	def add_note(self, text):		
+		current_time = datetime.datetime.now()
+		timestamp_lifespan = 3
+		recent_timestamps = []
+		for i in range(timestamp_lifespan + 1):
+			time = current_time - datetime.timedelta(minutes=i)
+			time = time.strftime("%I:%M %p")
+			if time.startswith("0"):
+				time = " " + time[1:]
+			recent_timestamps.append(f"\n<span class=\"dillerm-timestamp\">{time}</span>\n")
+		
+		found_recent_timestamp = False
+		for timestamp in recent_timestamps:
+			if timestamp in self.content:
+				found_recent_timestamp = True
+		
+		if found_recent_timestamp:
 			self.content += f"{text}\n"
 		else:
 			if not re.search("\n\s*\n$", self.content):
 				self.content += "\n"
-			self.content += f"{timestamp}{text}\n"
+			self.content += f"{recent_timestamps[0]}{text}\n"
 		self.write()
 
 	# adds todo to the first list of todos in the note

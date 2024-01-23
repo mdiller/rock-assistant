@@ -3,6 +3,7 @@ import asyncio
 import pyaudio
 from pydub import AudioSegment, playback
 from gui.gui import AssistantGui
+import pyperclip
 
 from utils.settings import settings
 import utils.utils as utils
@@ -44,6 +45,12 @@ class LocalMachine():
 	async def record_microphone_stop(self):
 		if self.mic_lock.locked():
 			self.mic_lock.release()
+	
+	def get_clipboard_text(self) -> str:
+		return pyperclip.paste()
+	
+	def set_clipboard_text(self, text: str):
+		return pyperclip.copy(text)
 
 	# start recording and wait until the recording has finished
 	async def record_microphone(self, logger):

@@ -161,7 +161,7 @@ class CodeFile():
 				print(f"ERROR reading metadata of: {self.path}")
 				self.metadata = CodeMetadata()
 		else:
-			self.metadata = CodeMetadata("")
+			self.metadata = None
 		
 		self.content = text
 	
@@ -170,7 +170,7 @@ class CodeFile():
 	
 	def _get_full_content(self):
 		text = ""
-		if self.metadata.has_content():
+		if self.metadata:
 			text += f"{self.language.comment_block_start}\n{self.metadata}\n{self.language.comment_block_end}\n"
 		text += self.content
 		return text

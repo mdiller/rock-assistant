@@ -94,6 +94,7 @@ class StepType(Enum):
 	CODE_WRITER = ("Code Assistant",      "fas fa-pencil")
 	OBSIDIAN_RUNNER = ("Obsidian Runner", "fas fa-file-lines")
 
+	RUNNING_CODE = ("Running Code",  "fas fa-terminal")
 	FUNCTION = ("Function",          "fas fa-terminal")
 	AI_CHAT = ("OpenAI Chat",        "fas fa-robot")
 	LOCAL_RECORD = ("Listening",     "fas fa-microphone")
@@ -222,6 +223,7 @@ class Context():
 		self.target: str = None
 		self.finish_audio_response: str = None
 		self.say_log: typing.List[str] = []
+		self.original_prompt: str = None
 	
 	# METHODS FOR STEPS TO USE
 	def get_conversator(self) -> 'chat.conversator.Conversator':
@@ -280,31 +282,31 @@ class Context():
 			"start_time": self.root_step.time_start.isoformat(),
 			"root_step": self.root_step.toGuiJson()
 		}
-
+	
 	# START/END EVENTS
-	async def on_finish(self):
+	def on_start(self):
+		self.update_gui()
+		if self.source == ContextSource.LOCAL_MACHINE:
+			self.local_machine.gui.show()
+
+	
+	def on_finish(self):
 		self.log("Done!")
 		self.root_step.on_ctx_finish(self)
 		self.log(f"Final state: {self.final_state}")
 		if self.finish_audio_response is None:
 			self.finish_audio_response = self.final_state.sound.filepath
-			await self.play_sound(self.final_state.sound)
+			asyncio.ensure_future(self.play_sound(self.final_state.sound))
 		self.update_gui()
 		self.saveLog()
 	
-	async def on_start(self):
-		self.update_gui()
-		if self.source == ContextSource.LOCAL_MACHINE:
-			self.local_machine.gui.show()
-		pass
-	
 	def __enter__(self) -> 'Context':
-		asyncio.ensure_future(self.on_start())
+		self.on_start()
 		return self
 
 	def __exit__(self, exc_type, exc_val, exc_tb):
 		self.root_step.done(exc_type, exc_val, exc_tb)
-		asyncio.ensure_future(self.on_finish())
+		self.on_finish()
 
 	def getLogLines(self, indent_str="\t", step: Step = None, indent_level = 0) -> typing.List[LogMessage]:
 		if step is None:

@@ -14,7 +14,8 @@ import inspect
 from  openai.types.chat.chat_completion_message import FunctionCall
 from chat.conversator import ConvGenArgs
 from context import Context, StepFinalState, StepType
-
+import custom_funcs
+from importlib import reload
 
 from obsidian import ObsidianFile, AssistantConfig
 import obsidian
@@ -42,117 +43,51 @@ class AssFunctionArg():
 			return None
 
 class AssFunction():
-	name: str
-	file: ObsidianFile
-	exec: typing.Callable
-	args: typing.List[AssFunctionArg]
-	def __init__(self, file: ObsidianFile):
-		self.file = file
-		self.args = []
-		self.exec = None
+	def __init__(self, func: typing.Callable):
+		self.func = func
+		self.name: str = func.__name__
+		self.description: str = func.__doc__
+		self.exec = func
+		self.args: typing.List[AssFunctionArg] = []
 	
 	def toDoc(self):
-		return f"{self.name.upper()}({', '.join(map(lambda a: a.toDoc(), self.args))})"
-
-	# deprecated
-	def to_json(self):
-		result = OrderedDict([
-			("name", self.name),
-			("description", self.description)
-		])
-		args = OrderedDict()
-		for arg in self.args:
-			args[arg.name] = OrderedDict([
-				("type", arg.type_name),
-				("description", arg.description)
-			])
-		result["parameters"] = OrderedDict([
-			("type", "object"),
-			("properties", args)
-		])
-		return result
+		return f"{self.name.upper()}({', '.join(map(lambda a: a.toDoc(), self.args))}) ; {self.description}"
 	
-	# returns False if this function is invalid / improper syntax
 	def try_load(self):
+		self.args = []
 		problems = []
-		props = [ "name", "description", "args" ]
-		for prop in props:
-			if prop in self.file.metadata:
-				value = self.file.metadata[prop]
-				if value is None or value == "":
-					problems.append(f"Property '{prop}' requires actual value")
-			else:
-				problems.append(f"Missing property '{prop}'")
-		
-		# load args from metadata
-		for arg_name in self.file.metadata["args"]:
-			self.args.append(AssFunctionArg(arg_name, self.file.metadata["args"][arg_name]))
-		
-		# load code
-		code_match = re.search("```python\n([\s\S]+?)\n```", self.file.content, re.MULTILINE | re.DOTALL)
-		if code_match:
-			code_text = code_match.group(1)
-			ns = {}
-			exec(code_text, globals(), ns)
-			ns_values = list(ns.values())
-			if len(ns_values) < 1 or not callable(ns_values[-1]):
-				problems.append("Code block is missing a function")
-			else:
-				self.exec = ns_values[-1]
-				signature = inspect.signature(self.exec)
-				args = list(signature.parameters.keys())
-				if args[0] != "ctx":
-					problems.append("Missing ctx arg")
-				else:
-					args = args[1:]
-					# TODO: implement better error checking here
-					# if len(args) > len(self.args):
-					# 	arg_list = ", ".join(list(filter(lambda arg: arg in map(lambda a: a.name, self.args), args)))
-					# 	problems.append(f"Undocumented func args: {arg_list}")
-					# 	 # TODO: in future, add docs for params that dont have doc, and then make it empty so user has to fill
-					# if len(args) < len(self.args):
-					# 	arg_list = ", ".join(list(filter(lambda arg: arg.name in args, self.args)))
-					# 	problems.append(f"Args missing from code: {arg_list}")
-					
-					if len(args) != len(self.args):
-						problems.append(f"Args count mismatch between code and docs")
-					else:
-						for i in range(len(self.args)):
-							param = signature.parameters[args[i]]
-							if not param.default == inspect._empty:
-								self.args[i].optional = True
-							argtype = self.args[i].try_convert_type(param.annotation)
-							if argtype:
-								self.args[i].type = param.annotation
-								self.args[i].type_name = argtype
-							else:
-								problems.append(f"Invalid param type on func arg: '{args[i]}'")
-					
-		else:
-			problems.append("Missing a code block")
 
+		if self.description is None or self.description == "":
+			problems.append("missing description")
+		
+		signature = inspect.signature(self.func)
+		args = list(signature.parameters.keys())
+		if args[0] != "ctx":
+			problems.append("Missing ctx arg")
+		else:
+			args = args[1:]
+			for argname in args:
+				arg = AssFunctionArg(argname, "")
+				param = signature.parameters[argname]
+				if not param.default == inspect._empty:
+					arg.optional = True
+				argtype = arg.try_convert_type(param.annotation)
+				if argtype:
+					arg.type = param.annotation
+					arg.type_name = argtype
+				else:
+					problems.append(f"Invalid param type on func arg: '{argname}'")
+				self.args.append(arg)
+		
 		if len(problems) == 0:
-			if self.file.ass_output:
-				self.file.ass_output = None
-				self.file.write()
 			return True
 		else:
-			error_str = f"ERROR LOADING {self.file.name}"
+			error_str = f"ERROR LOADING {self.name}"
 			for problem in problems:
 				error_str += f"\n - {problem}"
 			error_str = f"```\n{error_str}\n```"
 			print(error_str)
-			
-			self.file.ass_output = error_str
-			self.file.write()
-	
-	@property
-	def name(self) -> str:
-		return self.file.metadata["name"]
-		
-	@property
-	def description(self):
-		return self.file.metadata["description"]
+			return False
 
 class SpecialFuncArgType():
 	def __init__(self, name: str, description: str):
@@ -191,12 +126,11 @@ class FunctionsRunner():
 	
 	# re-loads the functions
 	def reload(self):
+		reload(custom_funcs)
 		self.functions = []
-		files = os.listdir(self.funcs_dir)
-		files = [f for f in files if os.path.isfile(os.path.join(self.funcs_dir, f))]
-		for file in files:
-			file = ObsidianFile(os.path.join(self.funcs_dir, file))
-			func = AssFunction(file)
+		
+		for func in custom_funcs.CUSTOM_FUNCS:
+			func = AssFunction(func)
 			if func.try_load():
 				self.functions.append(func)
 	
@@ -204,7 +138,7 @@ class FunctionsRunner():
 			SpecialFuncArgType("day", "a string representing a day, in the format YYYY-MM-DD")
 		]
 		self.special_variables = [
-			SpecialVariable("CLIPBOARD", "The user's clipboard contents as text", lambda: "<clipdata>")
+			# SpecialVariable("CLIPBOARD", "The user's clipboard contents as text", lambda: "<clipdata>")
 		]
 	
 	def get_system_prompt(self):
@@ -215,6 +149,7 @@ class FunctionsRunner():
 		today = datetime.datetime.now() - datetime.timedelta(hours=4) # anything before 4am is part of the previous day
 		repl_dict["ADDITIONAL_INFO"] = "today: " + today.strftime("%Y-%m-%d (%A)")
 		repl_dict["ARG_TYPES"] = "\n".join(map(lambda f: f.toDoc(), self.extra_func_arg_types))
+		repl_dict["SPECIAL_VARIABLES"] = "\n".join(map(lambda f: f.toDoc(), self.special_variables))
 		repl_dict["COMMANDS"] = "\n".join(map(lambda f: f.toDoc(), self.functions))
 		for key in repl_dict:
 			text = text.replace(f"{{{key}}}", repl_dict[key])
@@ -246,12 +181,13 @@ class FunctionsRunner():
 	async def interpret_prompt(self, prompt: str) -> FunctionCall:
 		conversator = self.ctx.get_conversator()
 		conversator.input_system(self.get_system_prompt())
-		conversator.input_user(prompt)
+		self.ctx.original_prompt = prompt
+		conversator.input_user(f"Create a function call for this prompt: \"{prompt}\"")
 		responses = await conversator.get_responses(
 			ConvGenArgs(
 				step_name="Interpret Func",
 				response_count=3,
-				output_limit=25)
+				output_limit=75)
 		)
 		
 		for response in responses:
@@ -264,15 +200,7 @@ class FunctionsRunner():
 	# interpret the prompt and then runs the resulting function
 	async def run_prompt(self, prompt: str):
 		func_call = await self.interpret_prompt(prompt)
-		if func_call.func_name == "GIVE_UP":
-			conversator = self.ctx.get_conversator()
-			conversator.input_system("Keep your responses brief, at most two sentances.")
-			conversator.input_user(prompt)
-			return await conversator.get_response(
-				ConvGenArgs(output_limit=60)
-			)
-		else:
-			return await self._run_func(func_call)
+		return await self._run_func(func_call)
 	
 	async def run_func(self, func_name: str, args_list: typing.List):
 		return await self._run_func(FunctionCall(func_name, args_list))
@@ -294,7 +222,7 @@ class FunctionsRunner():
 		
 		for i in range(len(selected_func.args)):
 			arg = selected_func.args[i]
-			if not isinstance(args_list[i], arg.type):
+			if i != 0 and not isinstance(args_list[i], arg.type):
 				try:
 					args_list[i] = arg.type(args_list[i])
 				except Exception as e:

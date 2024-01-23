@@ -5,7 +5,7 @@ PROMPT:
 '''''
 # Removed unnecessary imports
 from colorama import Fore
-from code_writer.CodeFile import CodeFile, CodeLanguage
+from code_writer.CodeFile import CodeFile, CodeLanguage, CodeMetadata
 from context import Context, StepFinalState
 import chat.conversator as conv
 import re
@@ -39,7 +39,8 @@ async def run_thing(ctx: Context, file: str = DEFAULT_FILE) -> StepFinalState:
 	code_file = CodeFile(file)
 	ctx.log(f"] Running CodeWriter on: {file}")
 
-	code_file.metadata.print_args()
+	if code_file.metadata:
+		code_file.metadata.print_args()
 	ctx.log("CODE:", Fore.CYAN)
 	lines = code_file.content.split("\n")
 	max_lines = 25
@@ -50,12 +51,14 @@ async def run_thing(ctx: Context, file: str = DEFAULT_FILE) -> StepFinalState:
 		ctx.log(f"... ({len(lines) - (2 * show_ends)} more lines) ...", Fore.BLACK)
 	else:
 		ctx.log(code_file.content, Fore.BLACK)
-	code_file.write()
 
 	ctx.log("Running...", Fore.CYAN)
 
+	prompt = ""
+	if code_file.metadata:
+		prompt = code_file.metadata.get("prompt").strip()
+	
 	prompt_pattern = f"\n([^\S\r\n]*){code_file.language.inline_comment} PROMPT: (.+)(?:\n|$)"
-	prompt = code_file.metadata.get("prompt").strip()
 	
 	prompt_pattern = re.compile(prompt_pattern)
 
@@ -109,10 +112,13 @@ async def run_thing(ctx: Context, file: str = DEFAULT_FILE) -> StepFinalState:
 			NEWCODEPLACEHOLDER = "{NEWCODEPLACEHOLDER}"
 			code_file.content = re.sub(prompt_pattern, NEWCODEPLACEHOLDER, code_file.content)
 			code_file.content = code_file.content.replace(NEWCODEPLACEHOLDER, new_code)
-			code_file.metadata.set("tokens", code_file.metadata.get("tokens") + token_count.input_count + token_count.output_count)
-			code_file.metadata.set("price", code_file.metadata.get("price") + float(token_count.get_total_price().cent_amount))
+			if code_file.metadata:
+				code_file.metadata.set("tokens", code_file.metadata.get("tokens") + token_count.input_count + token_count.output_count)
+				code_file.metadata.set("price", code_file.metadata.get("price") + float(token_count.get_total_price().cent_amount))
 			code_file.write()
 	else:
+		code_file.metadata = CodeMetadata("")
+		code_file.write()
 		ctx.log("No prompt! Nothing to do!")
 		return StepFinalState.NOTHING_DONE
 	return StepFinalState.SUCCESS

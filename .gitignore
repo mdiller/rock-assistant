@@ -3,3 +3,5 @@ _temp/
 __pycache__/
 settings.json
 cache/
+
+src/custom_funcs/private_funcs.py
