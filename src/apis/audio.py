@@ -72,7 +72,6 @@ class AudioApi():
 		uri = f"tts:{self.config.tts_voice}:{text}"
 		filename = await cache.get_filename(uri)
 		if not filename:
-			print("tts...")
 			filename = await cache.new(uri, "wav")
 			loop = asyncio.get_event_loop()
 			async with tts_file_lock:
@@ -85,6 +84,4 @@ class AudioApi():
 			
 			sound = AudioSegment.from_mp3(mp3_file)
 			sound.export(filename, format="wav")
-		else:
-			print("tts(cached)")
 		return filename

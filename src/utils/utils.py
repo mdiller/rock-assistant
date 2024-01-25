@@ -8,7 +8,8 @@ from colorama import Fore
 def print_color(text, color = None):
 	if color is None:
 		print(text)
-	print(f"{color}{text}{Fore.WHITE}")
+	else:
+		print(f"{color}{text}{Fore.WHITE}")
 
 def printerr(text):
 	print_color(text, Fore.RED)

@@ -8,12 +8,12 @@ import os
 import re
 import traceback
 from chat.conversator import ConvGenArgs
-from context import Context, StepFinalState
+from context import Context, StepFinalState, StepType
 import requests
 from utils.settings import settings
 
-async def give_up(ctx: Context):
-	"""Give up"""
+async def request_help(ctx: Context, prompt: str):
+	"""Request help with dealing with the user's request"""
 	conversator = ctx.get_conversator()
 	conversator.input_system("Keep your responses brief, at most two sentances.")
 	conversator.input_user(ctx.original_prompt)
@@ -77,14 +77,22 @@ Here is an example of what the input data from the clipboard could look like:
 			f.write(response)
 	else:
 		code = match.group(1)
-		try:
-			exec(code)
-			with open(out_file, "r") as f:
-				ctx.local_machine.set_clipboard_text(f.read())
-		except Exception as e:
-			ctx.current_step.final_state = StepFinalState.CHAT_ERROR
-			traceback_str = traceback.format_exc()
-			code = f"'''''\nERRORED:\n{traceback_str}\n'''''\n{code}"
-		with open(out_script, "w+") as f:
-			f.write(code)
+		with ctx.step(StepType.RUNNING_CODE):
+			try:
+				ctx.log("running code!")
+				exec(code)
+				with open(out_file, "r") as f:
+					result = f.read()
+				ctx.log("result: " + result)
+				ctx.local_machine.set_clipboard_text(result)
+				ctx.log("clipboard set")
+			except Exception as e:
+				ctx.current_step.final_state = StepFinalState.CHAT_ERROR
+				traceback_str = traceback.format_exc()
+				code = f"'''''\nERRORED:\n{traceback_str}\n'''''\n{code}"
+				ctx.log(traceback_str)
+			with open(out_script, "w+") as f:
+				f.write(code)
+
+				
 

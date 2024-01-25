@@ -19,13 +19,17 @@ class LocalMachine():
 
 	def __init__(self):
 		self.gui: AssistantGui = None
+		self.frames_saved: int = 0
 
-	def init_audio(self):
-		if self.audio is not None:
-			self.audio.terminate()
-		self.audio = pyaudio.PyAudio()
+	def init_audio(self, logger):
+		if self.audio is None:
+			logger.log("initializing audio...")
+			self.audio = pyaudio.PyAudio()
+			logger.log("audio initialized!")
+		# self.audio.terminate()
 
-	async def _play_wav(self, decoded_song, lock_set=False):
+	async def _play_wav(self, filename, lock_set=False):
+		decoded_song = await utils.run_async(lambda: AudioSegment.from_wav(filename))
 		if lock_set:
 			await utils.run_async(lambda: playback.play(decoded_song))
 			self.play_lock.release()
@@ -34,12 +38,11 @@ class LocalMachine():
 				await utils.run_async(lambda: playback.play(decoded_song))
 
 	async def play_wav(self, filename, wait=True):
-		song = AudioSegment.from_wav(filename)
 		if wait:
-			await self._play_wav(song)
+			await self._play_wav(filename)
 		else:
 			await self.play_lock.acquire()
-			asyncio.ensure_future(self._play_wav(song, True))
+			asyncio.ensure_future(self._play_wav(filename, True))
 
 	# end the microphone recording
 	async def record_microphone_stop(self):
@@ -54,11 +57,13 @@ class LocalMachine():
 
 	# start recording and wait until the recording has finished
 	async def record_microphone(self, logger):
+		record_method_entered = datetime.datetime.now()
 		if self.mic_lock.locked():
 			self.mic_lock.release()
 		await self.mic_lock.acquire()
-		self.init_audio()
+		self.init_audio(logger)
 
+		logger.log("getting audio device data")
 		device_id_map = {}
 		# check devices connected
 		info = self.audio.get_host_api_info_by_index(0)
@@ -81,9 +86,11 @@ class LocalMachine():
 						logger.log(f"listening via: '{name}'")
 						break
 		
+		self.frames_saved = 0
 		audio_queue = asyncio.Queue()
 		def stream_callback(input_data, frame_count, time_info, status_flags):
 			audio_queue.put_nowait(input_data)
+			self.frames_saved += frame_count
 
 			return (input_data, pyaudio.paContinue)
 
@@ -94,27 +101,42 @@ class LocalMachine():
 			channels = recording_channels,
 			rate = recording_rate,
 			input = True,
-			frames_per_buffer = 8000,
+			frames_per_buffer = 4000,
 			input_device_index=audio_device_index,
 			stream_callback = stream_callback
 		)
+		# this initializating of the stream is what takes like 100 ms sometimes
 
 		stream_starttime = datetime.datetime.now()
 		stream.start_stream()
+		
+		logger.log("waiting...")
 
 		try:
 			await asyncio.wait_for(self.mic_lock.acquire(), timeout = MICROPHONE_TIMEOUT_SECONDS)
 			self.mic_lock.release()
+
+			# catch back up to real time before stopping
+			seconds_requested = (datetime.datetime.now() - record_method_entered).total_seconds()
+			seconds_recorded = self.frames_saved / recording_rate
+			logger.log(f"waiting for {seconds_requested - seconds_recorded:.2f}s of audio to streaming in")
+			while seconds_recorded < seconds_requested:
+				await asyncio.sleep(0.1)
+				seconds_recorded = self.frames_saved / recording_rate
+
+
 		except asyncio.exceptions.TimeoutError:
 			logger.log("ignoring: recording too long")
 			stream.stop_stream()
 			stream.close()
 			return None
 		
-		await asyncio.sleep(0.2) # finish recording for couple hundred miliseconds
+		# await asyncio.sleep(0.1) # finish recording for 100 ms incase we un-pressed to early
 
 		stream.stop_stream()
 		stream.close()
+
+		logger.log(f"{self.frames_saved / recording_rate:.2f} seconds of audio recorded")
 		
 		elapsed_time = datetime.datetime.now() - stream_starttime
 		if elapsed_time < datetime.timedelta(seconds=1):

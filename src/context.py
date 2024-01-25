@@ -9,12 +9,14 @@ from collections import OrderedDict
 import datetime
 from enum import Enum
 import os
+import traceback
 import yaml
 import typing
 from openai import OpenAI
 from apis.audio import AudioApi
 from gui.gui import AssistantGui
 
+from colorama import Fore
 from utils.settings import settings
 from local_machine import LocalMachine
 import obsidian
@@ -105,11 +107,16 @@ class StepType(Enum):
 		self.pretty_name = pretty_name
 		self.icon = icon
 
+LOG_COUNTER = 0
 class LogMessage():
-	def __init__(self, text: str, timestamp: datetime.datetime = None):
+	def __init__(self, text: str, timestamp: datetime.datetime = None, counter: int = None):
+		global LOG_COUNTER
 		self.text = text
 		self.timestamp = timestamp
+		self.counter = counter
 		if self.timestamp is None:
+			LOG_COUNTER += 1
+			self.counter = LOG_COUNTER
 			self.timestamp = datetime.datetime.now()
 	
 	def __repr__(self):
@@ -119,6 +126,7 @@ class LogMessage():
 class Step():
 	def __init__(self, ctx: Context, step_type: StepType, parent: 'Step' = None, name: str = None):
 		self.ctx = ctx
+		self.logs: typing.List[LogMessage] = []
 		self.step_type = step_type
 		self.parent = parent
 		self.name = name
@@ -132,20 +140,19 @@ class Step():
 		self.price = 0
 		self.tokens = 0
 		self.child_steps: typing.List[Step] = []
+		self.exception_trace = None
 
-		self.logs: typing.List[LogMessage] = []
 		log_message = f"Step: {step_type.pretty_name}"
 		if name:
 			log_message += f": {self.name}"
 		self.log(log_message)
-		print(log_message)
 	
 	def log(self, text: str):
 		self.logs.append(LogMessage(text))
 	
 	def get_log_postfix(self):
 		duration_ms = int((self.time_end - self.time_start).total_seconds() * 1000)
-		items = [ f"{duration_ms:,} ms" ]
+		items = [ self.final_state.name, f"{duration_ms:,} ms" ]
 		if self.price:
 			items.append(PreciseMoney(self.price).cent_amount + " cents")
 		items = ", ".join(items)
@@ -159,7 +166,8 @@ class Step():
 			if child_errors:
 				self.final_state = StepFinalState.CHILD_STOPPED
 			else:
-				self.final_state = StepFinalState.EXCEPTION # TODO: add thing here for StopException and stopping for IGNORE etc.
+				self.final_state = StepFinalState.EXCEPTION
+				self.exception_trace = ("".join(traceback.format_exception(exc_type, exc_val, exc_tb))).strip()
 		else:
 			self.status = StepStatus.COMPLETED
 		if self.final_state is None:
@@ -209,14 +217,16 @@ if TYPE_CHECKING:
 	import chat.conversator
 # TODO: replace localmachine etc below with interfaces in future
 class Context():
-	def __init__(self, root_step: Step, openai_client: OpenAI, local_machine: LocalMachine, config: obsidian.AssistantConfig, source: ContextSource):
+	def __init__(self, root_step: Step, openai_client: OpenAI, local_machine: LocalMachine, config: obsidian.AssistantConfig, source: ContextSource, audio_api: AudioApi):
+		global LOG_COUNTER
+		LOG_COUNTER = 0
 		self.root_step = root_step
 		self.root_step.ctx = self
 		self.openai_client = openai_client
 		self.local_machine = local_machine
 		self.current_step = self.root_step
 		self.ass_config = config
-		self.audio_api = AudioApi(openai_client, config)
+		self.audio_api = audio_api
 		self.conversators: typing.List['chat.conversator.Conversator'] = []
 		self.source = source
 		self.final_state: StepFinalState = None
@@ -234,7 +244,7 @@ class Context():
 		return conversator
 	
 	def log(self, text: str, color = None):
-		print_color(text, color)
+		# print_color(text, color)
 		self.current_step.log(text)
 
 	async def say(self, text: str, is_finish=False):
@@ -307,12 +317,14 @@ class Context():
 	def __exit__(self, exc_type, exc_val, exc_tb):
 		self.root_step.done(exc_type, exc_val, exc_tb)
 		self.on_finish()
+		if self.final_state == StepFinalState.EXCEPTION:
+			return True # suppress exceptions, as we have these recorded and will handle them ourself
 
 	def getLogLines(self, indent_str="\t", step: Step = None, indent_level = 0) -> typing.List[LogMessage]:
 		if step is None:
 			# root step: do final sorting etc here
 			lines = self.getLogLines(indent_str, self.root_step, indent_level)
-			lines.sort(key=lambda line: line.timestamp)
+			lines.sort(key=lambda line: line.counter)
 			return lines
 		else:
 			lines = []
@@ -325,7 +337,7 @@ class Context():
 					text_prefix = text_prefix[:0 - len(step_prefix)] + step_prefix
 					text_postfix = " " + step.get_log_postfix()
 				text = f"{text_prefix}{line.text}{text_postfix}"
-				lines.append(LogMessage(text, line.timestamp))
+				lines.append(LogMessage(text, line.timestamp, line.counter))
 			for child in step.child_steps:
 				lines.extend(self.getLogLines(indent_str, child, indent_level + 1))
 			return lines
@@ -340,6 +352,17 @@ class Context():
 		for child in step.child_steps:
 			price += self.getFullPrice(child)
 		return price
+	
+	def getExceptionTrace(self, step: Step = None):
+		if step is None:
+			return self.getExceptionTrace(self.root_step)
+		if step.exception_trace:
+			return step.exception_trace
+		for child in step.child_steps:
+			result = self.getExceptionTrace(child)
+			if result:
+				return result
+		return None
 	
 	def toMarkdown(self):
 		result = ""
@@ -362,8 +385,12 @@ class Context():
 		conversators_md = "\n".join(conversators_md)
 		log_lines = "\n".join(map(str, self.getLogLines("      ")))
 		result = f"---\n{yaml.safe_dump(metadata, sort_keys=False).strip()}\n---\n"
-		result += f"```\n{log_lines}\n```\n"
+		result += f"```js\n{log_lines}\n```\n"
 		result += conversators_md
+		if self.final_state == StepFinalState.EXCEPTION:
+			exec_trace = self.getExceptionTrace()
+			print_color(exec_trace, Fore.RED)
+			result += f"\n#### Exception\n```python\n{exec_trace}\n```\n"
 		return result
 	
 	def saveLog(self):

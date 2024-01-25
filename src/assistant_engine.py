@@ -50,7 +50,8 @@ class AssEngine():
 			openai_client,
 			self.local_machine,
 			self.config,
-			source)
+			source,
+			audio_api=self.audio_api)
 
 	async def transcribe_microphone_stop(self):
 		await self.local_machine.record_microphone_stop()
@@ -63,7 +64,6 @@ class AssEngine():
 				ctx.log("audio record cancelled")
 				step.final_state = StepFinalState.NOTHING_DONE
 				return None
-			ctx.log(f"{audio_data.duration_seconds:.2f} seconds of audio recorded")
 		
 		await ctx.play_sound(AssSound.UNWAKE)
 
@@ -85,18 +85,14 @@ class AssEngine():
 
 	async def record_thought_local(self):
 		with self.new_ctx(StepType.THOUGHT_LOCAL, ContextSource.LOCAL_MACHINE) as ctx:
-			self.config.reload()
-
 			prompt_text = await self.transcribe_microphone(ctx)
 
 			if prompt_text is None:
 				return # nothing was said, so do nothing
 			
-			await self.run_function(ctx, "write_thought", [ prompt_text ])
+			await self.run_function(ctx, "write_down", [ prompt_text ])
 
 	async def main_chat(self):
-		self.config.reload()
-		
 		with self.new_ctx(StepType.ASSISTANT_LOCAL, ContextSource.LOCAL_MACHINE) as ctx:
 			prompt_text = await self.transcribe_microphone(ctx)
 
@@ -106,8 +102,6 @@ class AssEngine():
 			await self.prompt_assistant(ctx, prompt_text)
 	
 	async def run_file(self, ctx: Context, file: str = None):
-		self.config.reload()
-		
 		with ctx.step(StepType.OBSIDIAN_RUNNER):
 			if file is None:
 				prompt_file = obsidian.file(self.config.run_input)
@@ -188,9 +182,7 @@ class AssEngine():
 			prompt_file.write()
 
 	async def prompt_assistant(self, ctx: Context, prompt_text: str):
-		self.config.reload()
-
-		func_runner = functions.FunctionsRunner(self.config.functions_dir, ctx)
+		func_runner = functions.FunctionsRunner(ctx)
 
 		response = await func_runner.run_prompt(prompt_text)
 
@@ -208,8 +200,7 @@ class AssEngine():
 			step.final_state = await writer_entry.run_thing(ctx, file)
 	
 	async def run_function(self, ctx: Context, name: str, args: typing.List[str]):
-		ctx.log(f"Running func: {name}")
-		func_runner = functions.FunctionsRunner(self.config.functions_dir, ctx)
+		func_runner = functions.FunctionsRunner(ctx)
 		await func_runner.run_func(name, args)
 	
 	async def web_prompt(self, prompt: str):
@@ -219,7 +210,7 @@ class AssEngine():
 
 	async def web_thought(self, thought: str):
 		with self.new_ctx(StepType.WEB_ASSISTANT, ContextSource.WEB) as ctx:
-			await self.run_function(ctx, "write_thought", [ thought ])
+			await self.run_function(ctx, "write_down", [ thought ])
 		return ctx.finish_audio_response
 
 	async def _action_button(self, ctx: Context, file: str = None):
@@ -232,7 +223,7 @@ class AssEngine():
 				return await self.run_file(ctx, file)
 			else:
 				raise Exception(f"Unknown file type for action button: {file}")
-		# await self.run_function("write_thought", [ "a thought" ])
+		# await self.run_function("write_down", [ "a thought" ])
 
 	async def action_button(self, file: str = None):
 		with self.new_ctx(StepType.ACTION_BUTTON, ContextSource.LOCAL_MACHINE) as ctx:

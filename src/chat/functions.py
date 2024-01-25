@@ -113,15 +113,13 @@ class FunctionCall():
 		self.args_list = args_list
 
 class FunctionsRunner():
-	funcs_dir: str
 	functions: typing.List[AssFunction]
 	ctx: Context
 	extra_func_arg_types: typing.List[SpecialFuncArgType]
 	special_variables: typing.List[str]
 
-	def __init__(self, funcs_dir: str, ctx: Context):
+	def __init__(self, ctx: Context):
 		self.ctx = ctx
-		self.funcs_dir = obsidian.fix_path(funcs_dir)
 		self.reload()
 	
 	# re-loads the functions
