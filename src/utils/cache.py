@@ -92,24 +92,6 @@ class Cache:
 			return None
 		return filename
 
-	# Returns the file if it exists, otherwise None
-	# async def get(self, uri, return_type):
-	# 	filename = await self.get_filename(uri)
-	# 	if not filename:
-	# 		return None
-	# 	if return_type == "json":
-	# 		return read_json(filename)
-	# 	elif return_type == "text":
-	# 		with open(filename, "r") as f:
-	# 			return f.read()
-	# 	elif return_type == "bytes":
-	# 		with open(filename, "rb") as f:
-	# 			return BytesIO(f.read())
-	# 	elif return_type == "filename":
-	# 		return filename
-	# 	else:
-	# 		raise ValueError(f"Invalid return type '{return_type}'")
-
 	#creates a new entry in the cache and returns the filename of the new entry
 	async def new(self, uri, extension=None, permanent=False):
 		async with self.lock:

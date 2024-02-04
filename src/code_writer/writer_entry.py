@@ -5,7 +5,7 @@ PROMPT:
 '''''
 # Removed unnecessary imports
 from colorama import Fore
-from code_writer.CodeFile import CodeFile, CodeLanguage, CodeMetadata
+from code_writer.CodeFile import CodeFile, CodeLanguage, CodeMetadata, CodeSnippet
 from context import Context, StepFinalState
 import chat.conversator as conv
 import re
@@ -14,8 +14,6 @@ DEFAULT_FILE = __file__
 # code_file = CodeFile("C:\dev\projects\chatgpt_rock_runner\src\code_writer\example.py")
 # code_file = CodeFile("C:/dev/projects/chatgpt_rock_runner/src/utils/soundmaker.py")
 
-def fix_indentation(text):
-	return re.sub(r'^( {4})+', lambda match: '\t' * (len(match.group(0)) // 4), text, flags=re.MULTILINE)
 
 def parse_system_prompt(prompt: str, lang: CodeLanguage):
 	prompt = prompt.strip()
@@ -70,15 +68,16 @@ async def run_thing(ctx: Context, file: str = DEFAULT_FILE) -> StepFinalState:
 		response = await conversator.get_response()
 		token_count = conversator.get_token_count()
 		ctx.log(f"] Token Count {token_count}")
-		match = re.search(f"```{code_file.language.codeblock_pattern}\n(.*)\n```", response, re.MULTILINE | re.DOTALL)
-		if not match:
+
+		code_snippet = CodeSnippet.parse(response, code_file.language)
+		if not code_snippet:
 			ctx.log("Couldn't match regex for code", Fore.RED)
 			ctx.log("Response:", Fore.CYAN)
 			ctx.log(response, Fore.BLACK)
 			return StepFinalState.NOTHING_DONE
 		else:
 			ctx.log("] Writing new code!")
-			new_code = match.group(1)
+			new_code = code_snippet.code
 			code_file.content = new_code
 			code_file.metadata.set("tokens", code_file.metadata.get("tokens") + token_count.input_count + token_count.output_count)
 			code_file.metadata.set("price", code_file.metadata.get("price") + float(token_count.get_total_price().cent_amount))
@@ -97,16 +96,15 @@ async def run_thing(ctx: Context, file: str = DEFAULT_FILE) -> StepFinalState:
 		response = await conversator.get_response()
 		token_count = conversator.get_token_count()
 
-		match = re.search(f"```{code_file.language.codeblock_pattern}\n(.*)\n```", response, re.MULTILINE | re.DOTALL)
-		if not match:
+		code_snippet = CodeSnippet.parse(response, code_file.language)
+		if not code_snippet:
 			ctx.log("Couldn't match regex for code", Fore.RED)
 			ctx.log("Response:", Fore.CYAN)
 			ctx.log(response, Fore.BLACK)
 			return StepFinalState.CHAT_ERROR
 		else:
 			ctx.log("] Writing new code!")
-			new_code = match.group(1)
-			new_code = fix_indentation(new_code)
+			new_code = code_snippet.code
 			new_code = "\n".join(map(lambda line: f"{whitespace}{line}", new_code.split("\n")))
 			new_code = f"\n{new_code}\n"
 			NEWCODEPLACEHOLDER = "{NEWCODEPLACEHOLDER}"

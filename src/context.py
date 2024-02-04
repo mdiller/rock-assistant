@@ -96,6 +96,7 @@ class StepType(Enum):
 	CODE_WRITER = ("Code Assistant",      "fas fa-pencil")
 	OBSIDIAN_RUNNER = ("Obsidian Runner", "fas fa-file-lines")
 
+	QUERY_DATABASE = ("Query Database",  "fas fa-database")
 	RUNNING_CODE = ("Running Code",  "fas fa-terminal")
 	FUNCTION = ("Function",          "fas fa-terminal")
 	AI_CHAT = ("OpenAI Chat",        "fas fa-robot")
@@ -395,11 +396,12 @@ class Context():
 	
 	def saveLog(self):
 		logs_dir = os.path.join(obsidian.ROOT_DIR, self.ass_config.functions_dir, "../logs")
-		if not os.path.exists(logs_dir):
-			os.makedirs(logs_dir)
+		today_logs_dir = os.path.join(logs_dir, self.root_step.time_start.strftime('%Y-%m-%d'))
+		if not os.path.exists(today_logs_dir):
+			os.makedirs(today_logs_dir)
 		markdown = self.toMarkdown()
 		log_filename = f"{self.root_step.time_start.strftime('%Y-%m-%d_%H-%M-%S')}_{self.root_step.step_type}.md"
-		log_filepath = os.path.join(logs_dir, log_filename)
+		log_filepath = os.path.join(today_logs_dir, log_filename)
 		with open(log_filepath, "w+", encoding="utf-8") as f:
 			f.write(markdown)
 		log_filepath = os.path.join(logs_dir, "latest_log.md")

@@ -1,8 +1,3 @@
-'''''
-PROMPT:
-
-[- Used So Far: 0.0¢ | 0 tokens -]
-'''''
 import asyncio
 import typing
 from code_writer.CodeFile import CodeLanguage
@@ -108,7 +103,9 @@ class AssEngine():
 			else:
 				prompt_file = obsidian.file(file)
 
-			valid_actions = [ "run_convo", "assistant" ]
+			special_actions = [ "run_convo", "assistant", "command" ]
+			valid_actions = []
+			valid_actions.extend(special_actions)
 
 			system_prompts_root = os.path.join(obsidian.ROOT_DIR, self.config.system_prompts_dir)
 			for file in os.listdir(system_prompts_root):
@@ -139,7 +136,7 @@ class AssEngine():
 			action = ass_config.get("action", default_config["action"])
 
 			system_prompt_path = None
-			if action not in [ "run_convo", "assistant" ]:
+			if action not in special_actions:
 				system_prompt_path = os.path.join(system_prompts_root, f"{action}.md")
 
 			if action == "assistant":
@@ -166,6 +163,20 @@ class AssEngine():
 				ctx.log(f"ASSISTANT> {response}")
 
 				response = AssOutput(response, conversator.get_token_count())
+			elif action == "command":
+				command = prompt_file.metadata["assistant"].get("command")
+				if command:
+					args = []
+					content = prompt_file.content.strip()
+					if content:
+						args.append(content)
+					await self.run_function(ctx, command, args)
+					if len(ctx.say_log) == 0:
+						response = AssOutput("done!")
+					else:
+						response = AssOutput(ctx.say_log[-1])
+				else:
+					response = AssOutput("specify a 'command' arg")
 			else:
 				system_prompt_path = os.path.join(system_prompts_root, f"{action}.md")
 				system_prompt_file = obsidian.file(system_prompt_path)

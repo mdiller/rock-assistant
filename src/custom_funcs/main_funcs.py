@@ -1,15 +1,18 @@
 '''''
 PROMPT:
 
-[- Used So Far: 0.1679¢ | 1130 tokens -]
+[- Used So Far: 0.1918¢ | 1327 tokens -]
 '''''
 import datetime
 import os
 import re
 import traceback
+import typing
 from chat.conversator import ConvGenArgs
+from code_writer.CodeFile import CodeSnippet
 from context import Context, StepFinalState, StepType
 import requests
+from dillerbase import Dillerbase
 from utils.settings import settings
 
 async def request_help(ctx: Context, prompt: str):
@@ -96,3 +99,56 @@ Here is an example of what the input data from the clipboard could look like:
 
 				
 
+async def ask_database(ctx: Context, prompt: str):
+	"""Ask my personal database a question. This DB has information about dota games, bike rides, and song ive listened to"""
+	with Dillerbase() as db:
+		system_prompt = """Write a postgreSQL query to answer the user's request. The query should be the only thing contained in the response, and should be enclosed in a markdown-style ```sql code block. After I run the query, I'll give you the results and you can format the output for me, but don't worry about that until the user asks for it.
+
+Remember that this is how you do conversions
+- ms to minutes: value_ms / (1000.0 * 60.0)
+- ms to hours: value_ms / (1000.0 * 60.0 * 60.0)
+- seconds to minutes: value_seconds / 60.0
+- seconds to hours: value_seconds / (60.0 * 60.0)
+Make sure you dont multiply by 24 or 7, unless the user is asking for a value in days or weeks.
+
+The database you are writing this query for has schema matching the following:"""
+		system_prompt += f"\n```sql\n{db.get_db_table_schema()}\n```"
+		conversator = ctx.get_conversator()
+		conversator.input_system(system_prompt)
+		conversator.input_user(f"Write me an sql query to satisfy this prompt: \"{prompt}\"")
+		responses = await conversator.get_responses(
+			ConvGenArgs(response_count=3)
+		)
+		code_snippets: typing.List[CodeSnippet]
+		code_snippets = []
+
+		for response in responses:
+			code_snippets.append(CodeSnippet.parse(response))
+		
+		if all(item is None for item in code_snippets):
+			ctx.log(f"No valid queries found!")
+			return StepFinalState.CHAT_ERROR
+
+		successful_query = None
+		result_table = None
+		with ctx.step(StepType.QUERY_DATABASE):
+			for i in range(len(responses)):
+				if code_snippets[i] is None:
+					ctx.log(f"No DB Query found for {i + 1} / {len(responses)}")
+					continue # skip this one
+				ctx.log(f"Running DB Query {i + 1} / {len(responses)}")
+				try:
+					result_table = db.query_as_table(code_snippets[i].code)
+					successful_query = code_snippets[i]
+					break
+				except Exception as e:
+					ctx.log(f"DB Query Failed with exception: {e}")
+		if not successful_query:
+			return StepFinalState.CHAT_ERROR
+		
+		conversator = ctx.get_conversator()
+		conversator.input_user(prompt)
+		conversator.input_system(f"The postgres database has been queried via this query:\n{successful_query}\n The response to this query was:\n{result_table}\n")
+		conversator.input_system("Respond to the user's initial question in a single sentance using the provided data. If there is a small number, say it with 2 decimal levels of precision, unless it is .0, in which case treat it as an int")
+		response = await conversator.get_response()
+		return response

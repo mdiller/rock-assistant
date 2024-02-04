@@ -52,6 +52,10 @@ class Settings:
 	@property
 	def googleapi_key(self):
 		return self.json_data["googleapi_key"]
+
+	@property
+	def dillerbase_connection_string(self):
+		return self.json_data["dillerbase_connection_string"]
 	
 	
 	@property

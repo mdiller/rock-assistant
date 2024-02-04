@@ -40,8 +40,36 @@ ALL_CODELANGS = [
 	CodeLanguage("python", "py", "'''''", "'''''", "#"),
 	CodeLanguage("javascript", "js", "/*", "*/", "//"),
 	CodeLanguage("typescript", "ts", "/*", "*/", "//", [ "js", "javascript" ]),
+	CodeLanguage("typescript", "tsx", "/*", "*/", "//", [ "js", "javascript" ]),
 	CodeLanguage("AutoHotkey", "ahk", "/*", "*/", ";"),
 ]
+
+# represents a snippet of code, usually extracted from a chatgpt response
+class CodeSnippet():
+	def __init__(self, code: str, lang_str: str = ""):
+		self.code = code
+		self.lang_str = lang_str
+		self.fix_indentation()
+	
+	@classmethod
+	def parse(cls, text: str, lang: CodeLanguage = None):
+		codepattern = "[a-z]*"
+		if lang:
+			codepattern = lang.codeblock_pattern
+		pattern = f"```({codepattern})\n((?:(?!```).)+)\n```"
+		# match = re.search(pattern, text, re.MULTILINE | re.DOTALL)
+		matches = list(re.finditer(pattern, text, re.DOTALL))
+		if len(matches) == 0:
+			return None
+		lang_str = matches[-1].group(1)
+		code = matches[-1].group(2)
+		return CodeSnippet(code, lang_str)
+
+	def fix_indentation(self):
+		self.code = re.sub(r'^( {4})+', lambda match: '\t' * (len(match.group(0)) // 4), self.code, flags=re.MULTILINE)
+	
+	def __repr__(self):
+		return f"```{self.lang_str}\n{self.code}\n```"
 
 # A serializable piece of metadata that can be inserted into a template etc
 class MetadataVar():

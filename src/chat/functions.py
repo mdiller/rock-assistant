@@ -234,11 +234,11 @@ class FunctionsRunner():
 
 		except Exception as e:
 			# TODO: make a specific exception type that we can call to indicate bad input vs bad func calling maybe.
-			error = traceback.format_exc()
-			pretty_args = ", ".join(map(lambda arg: str(arg), args_list))
-			error = f"ERROR ON: {selected_func.name}({pretty_args})\n```\n{error}```"
-			selected_func.file.ass_output = error
-			selected_func.file.write()
+			# error = traceback.format_exc()
+			# pretty_args = ", ".join(map(lambda arg: str(arg), args_list))
+			# error = f"ERROR ON: {selected_func.name}({pretty_args})\n```\n{error}```"
+			# selected_func.file.ass_output = error
+			# selected_func.file.write()
 			raise
 		if response is not None:
 			if isinstance(response, StepFinalState):

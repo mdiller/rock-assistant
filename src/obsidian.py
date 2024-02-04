@@ -109,7 +109,7 @@ class ObsidianFile():
 		if self.ass_output is not None:
 			if isinstance(self.ass_output, str):
 				self.ass_output = AssOutput(self.ass_output)
-			if self.content[-1] != "\n":
+			if len(self.content) > 0 and self.content[-1] != "\n":
 				text += "\n"
 			
 			if self.ass_output.timestamp is None:

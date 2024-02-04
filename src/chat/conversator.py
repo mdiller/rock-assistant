@@ -75,7 +75,8 @@ class Conversator:
 				model="gpt-3.5-turbo",
 				messages=list(map(lambda m: m.toJson(), self.messages)),
 				n=args.response_count,
-				max_tokens=args.output_limit)
+				max_tokens=args.output_limit,
+				timeout=30)
 	
 	async def get_response(self, args: ConvGenArgs = None) -> str:
 		messages = await self.get_responses(args)
