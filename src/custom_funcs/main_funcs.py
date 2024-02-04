@@ -15,7 +15,7 @@ import requests
 from dillerbase import Dillerbase
 from utils.settings import settings
 
-async def request_help(ctx: Context, prompt: str):
+async def ask_chatgpt(ctx: Context, prompt: str):
 	"""Request help with dealing with the user's request"""
 	conversator = ctx.get_conversator()
 	conversator.input_system("Keep your responses brief, at most two sentances.")
@@ -97,7 +97,9 @@ Here is an example of what the input data from the clipboard could look like:
 			with open(out_script, "w+") as f:
 				f.write(code)
 
-				
+async def repeat_me(ctx: Context, text: str):
+	"""Repeats back to the user what they just said"""
+	await ctx.say(text)
 
 async def ask_database(ctx: Context, prompt: str):
 	"""Ask my personal database a question. This DB has information about dota games, bike rides, and song ive listened to"""
