@@ -119,7 +119,10 @@ The database you are writing this query for has schema matching the following:""
 		conversator.input_system(system_prompt)
 		conversator.input_user(f"Write me an sql query to satisfy this prompt: \"{prompt}\"")
 		responses = await conversator.get_responses(
-			ConvGenArgs(response_count=3)
+			ConvGenArgs(
+				response_count=3,
+				step_name="Create Query"
+			)
 		)
 		code_snippets: typing.List[CodeSnippet]
 		code_snippets = []
@@ -152,5 +155,7 @@ The database you are writing this query for has schema matching the following:""
 		conversator.input_user(prompt)
 		conversator.input_system(f"The postgres database has been queried via this query:\n{successful_query}\n The response to this query was:\n{result_table}\n")
 		conversator.input_system("Respond to the user's initial question in a single sentance using the provided data. If there is a small number, say it with 2 decimal levels of precision, unless it is .0, in which case treat it as an int")
-		response = await conversator.get_response()
+		response = await conversator.get_response(
+			ConvGenArgs(step_name="Interpret Results")
+		)
 		return response

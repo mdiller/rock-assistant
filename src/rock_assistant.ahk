@@ -9,7 +9,7 @@ SetBatchLines, -1
 
 print(text)
 {
-	logFile := "C:\dev\projects\chatgpt_rock_runner\_temp\ahk_log.txt"
+	logFile := "C:\dev\projects\assistant\_temp\ahk_log.txt"
 	FormatTime, now,, yyyy-MM-ddTHH:mm:ss
 	line := now . "." . A_MSec . "|" . text
 	

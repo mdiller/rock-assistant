@@ -11,8 +11,8 @@ import chat.conversator as conv
 import re
 
 DEFAULT_FILE = __file__
-# code_file = CodeFile("C:\dev\projects\chatgpt_rock_runner\src\code_writer\example.py")
-# code_file = CodeFile("C:/dev/projects/chatgpt_rock_runner/src/utils/soundmaker.py")
+# code_file = CodeFile("C:\dev\projects\assistant\src\code_writer\example.py")
+# code_file = CodeFile("C:/dev/projects/assistant/src/utils/soundmaker.py")
 
 
 def parse_system_prompt(prompt: str, lang: CodeLanguage):

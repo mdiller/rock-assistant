@@ -42,6 +42,7 @@ ALL_CODELANGS = [
 	CodeLanguage("typescript", "ts", "/*", "*/", "//", [ "js", "javascript" ]),
 	CodeLanguage("typescript", "tsx", "/*", "*/", "//", [ "js", "javascript" ]),
 	CodeLanguage("AutoHotkey", "ahk", "/*", "*/", ";"),
+	CodeLanguage("bash", "sh", ": '", "'", "#"),
 ]
 
 # represents a snippet of code, usually extracted from a chatgpt response
