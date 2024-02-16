@@ -20,6 +20,7 @@ This is a quick and zoomed-in demo showing an example of the command that querie
 <details>
   <summary>🎥 <b>Show Demo</b></summary>
 
+https://github.com/mdiller/rock-assistant/assets/3231343/907154c0-f1c3-487e-99a6-310601d2e4e9
 
 </details>
 
@@ -32,9 +33,15 @@ A demo showcasing the gui, keyboard usage, obsidian runner, and coding assistant
 
 #### Part 1 (general assistant & thought recording)
 
+https://github.com/mdiller/rock-assistant/assets/3231343/e11cf805-844f-4033-bc22-a7fd56bd4c03
+
 #### Part 2 (obsidian runner)
 
+https://github.com/mdiller/rock-assistant/assets/3231343/4671c279-7670-46f0-a956-86a7ed4690d4
+
 #### Part 3 (coding assistant)
+
+https://github.com/mdiller/rock-assistant/assets/3231343/a8fdb38e-d495-4e37-a566-42dd29a5952b
 
 </details>
 
