@@ -33,12 +33,29 @@ class WebServer():
 	async def handle_request(self, request: Request):
 		print(f"{Fore.BLUE}WEB> {request.path_qs}{Fore.WHITE}")
 
-		if request.path == "/mic_start":
-			asyncio.ensure_future(self.engine.main_chat())
-		if request.path == "/mic_start_thought":
-			asyncio.ensure_future(self.engine.record_thought_local())
-		elif request.path == "/mic_stop":
+		modifiers = request.query.get("modifiers")
+
+		if request.path == "/mic_stop":
 			await self.engine.transcribe_microphone_stop()
+			return web.Response(text="done!")
+		
+		if self.engine.is_busy():
+			print(f"{Fore.YELLOW}ignored (busy)")
+			return web.Response(text="we're busy")
+
+		if request.path == "/mic_start":
+			if modifiers:
+				if modifiers == "Shift":
+					asyncio.ensure_future(self.engine.mic_to_clipboard())
+				elif modifiers == "Control":
+					asyncio.ensure_future(self.engine.save_last_transcription())
+			else:
+				asyncio.ensure_future(self.engine.main_chat())
+		if request.path == "/mic_start_thought":
+			if modifiers and modifiers == "Control":
+				asyncio.ensure_future(self.engine.save_last_transcription())
+			else:
+				asyncio.ensure_future(self.engine.record_thought_local())
 		elif request.path == "/run":
 			file = request.query.get("file")
 			asyncio.ensure_future(self.engine.action_button(file))

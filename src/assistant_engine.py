@@ -12,6 +12,7 @@ import re
 from obsidian import ObsidianFile, AssistantConfig, AssOutput
 from importlib import reload
 import os
+import shutil
 
 from utils.settings import settings
 import chat.functions as functions
@@ -32,21 +33,30 @@ class AssEngine():
 	local_machine: LocalMachine
 	audio_api: AudioApi
 	config: AssistantConfig
+	current_context: Context
 
 	def __init__(self, config: AssistantConfig):
 		self.local_machine = LocalMachine()
 		self.audio_api = AudioApi(openai_client, config)
 		self.config = config
+		self.current_context = None
 	
-	def new_ctx(self, step_type: StepType, source: ContextSource) -> Context:
+	def is_busy(self):
+		if self.current_context is None:
+			return False
+		return self.current_context.final_state is None
+	
+	def new_ctx(self, step_type: StepType, source: ContextSource, step_name: str = None) -> Context:
 		# TODO: fix this root step bullshit to be better
-		return Context(
-			Step(None, step_type),
+		ctx = Context(
+			Step(None, step_type, name = step_name),
 			openai_client,
 			self.local_machine,
 			self.config,
 			source,
 			audio_api=self.audio_api)
+		self.current_context = ctx
+		return ctx
 
 	async def transcribe_microphone_stop(self):
 		await self.local_machine.record_microphone_stop()
@@ -68,7 +78,7 @@ class AssEngine():
 			
 			with ctx.step(StepType.TRANSCRIBE):
 				spoken_text = await self.audio_api.transcribe(SPEECH_TEMP_FILE)
-				ctx.log("TRANSCRIPTION: " + spoken_text)
+				ctx.log(f"TRANSCRIPTION: \"{spoken_text}\"")
 
 		spoken_text = spoken_text.strip()
 		
@@ -145,7 +155,7 @@ class AssEngine():
 				response = "`response didnt include text`"
 				if len(ctx.say_log) > 0:
 					response = ctx.say_log[0]
-				response = AssOutput(response, ctx.converators[0].get_token_count())
+				response = AssOutput(response, ctx.conversators[0].get_token_count())
 			elif action == "run_convo":
 				conversator = ctx.get_conversator()
 				pattern = "(?:\n|^)> (SYSTEM|USER|ASSISTANT)\n([\s\S]+?)(?=(?:\n> (?:SYSTEM|USER|ASSISTANT)|$))"
@@ -223,7 +233,26 @@ class AssEngine():
 		with self.new_ctx(StepType.WEB_ASSISTANT, ContextSource.WEB) as ctx:
 			await self.run_function(ctx, "write_down", [ thought ])
 		return ctx.finish_audio_response
+	
+	async def mic_to_clipboard(self):
+		with self.new_ctx(StepType.MIC_ACTION, ContextSource.LOCAL_MACHINE, "Mic To Clipboard") as ctx:
+			text = await self.transcribe_microphone(ctx)
 
+			if text is None:
+				return # nothing was said, so do nothing
+			with ctx.step(StepType.CUSTOM, "Copy To Clipboard"):
+				ctx.local_machine.set_clipboard_text(text)
+			
+	async def save_last_transcription(self):
+		with self.new_ctx(StepType.MIC_ACTION, ContextSource.LOCAL_MACHINE, "Save Last Transcription") as ctx:
+			out_folder = settings.resource("saved_transcriptions")
+			if not os.path.exists(out_folder):
+				os.makedirs(out_folder)
+			speechfile = settings.resource("sounds/_speech_input.mp3")
+			out_path = os.path.join(out_folder, datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S.mp3"))
+			with ctx.step(StepType.CUSTOM, "Copy File"):
+				shutil.copy(speechfile, out_path)
+			
 	async def _action_button(self, ctx: Context, file: str = None):
 		if file is None:
 			raise Exception("Action button pressed not on a file")

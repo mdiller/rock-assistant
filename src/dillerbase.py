@@ -1,7 +1,7 @@
 '''''
 PROMPT:
 
-[- Used So Far: 0.0587¢ | 386 tokens -]
+[- Used So Far: 0.09740000000000001¢ | 738 tokens -]
 '''''
 import datetime
 import psycopg2
@@ -11,6 +11,15 @@ from utils.settings import settings
 
 # string like: "dbname='---' user='---' host='---' password='---' port='---'"
 DB_CONNECTION_STRING = settings.dillerbase_connection_string
+
+custom_column_docs = {
+	"strava_rides.distance": "UNITS: miles",
+	"strava_rides.moving_time": "UNITS: seconds",
+	"strava_rides.total_elevation_gain": "UNITS: feet",
+	"strava_rides.average_speed": "UNITS: miles per hour",
+	"strava_rides.max_speed": "UNITS: miles per hour",
+	"strava_rides.sport_type": "Biking is 'Ride', Skiing is 'AlpineSki'. Unless the user specifies skiing, filter for biking here."
+}
 
 def _get_create_table_script(table_name, cursor):
 	# Fetch table details
@@ -44,21 +53,19 @@ def _get_create_table_script(table_name, cursor):
 	script = f"CREATE TABLE {table_name} (\n"
 	added_column_names = []
 	sorted_columns = []
-	for column in columns:
-		column_name, data_type, char_max_length, is_nullable, column_default = column
-		if column_name in primary_key:
-			added_column_names.append(column_name)
-			sorted_columns.append(column)
-	for column in columns:
-		column_name, data_type, char_max_length, is_nullable, column_default = column
-		if column_name == "timestamp" and column_name not in added_column_names:
-			added_column_names.append(column_name)
-			sorted_columns.append(column)
-	for column in columns:
-		column_name, data_type, char_max_length, is_nullable, column_default = column
-		if column_name not in added_column_names:
-			added_column_names.append(column_name)
-			sorted_columns.append(column)
+
+	filter_order = [
+		lambda column_name: column_name in primary_key,
+		lambda column_name: column_name == "timestamp" and column_name not in added_column_names,
+		lambda column_name: column_name not in added_column_names
+	]
+
+	for filter in filter_order:
+		for column in columns:
+			column_name, data_type, char_max_length, is_nullable, column_default = column
+			if filter(column_name):
+				added_column_names.append(column_name)
+				sorted_columns.append(column)
 
 	column_lines = []
 	for column in sorted_columns:
@@ -72,8 +79,19 @@ def _get_create_table_script(table_name, cursor):
 			line += " NOT NULL"
 		if column_default:
 			line += f" DEFAULT {column_default}"
+		for key in custom_column_docs:
+			key_table, key_column = key.split(".")
+			if key_table == table_name and key_column == column_name:
+				line += " -- " + custom_column_docs[key]
 		column_lines.append(line)
-	script += ",\n".join(column_lines)
+	for i, line in enumerate(column_lines):
+		if i < (len(column_lines) - 1):
+			if " --" in line:
+				comment_index = line.index(" --")
+				column_lines[i] = line[:comment_index] + "," + line[comment_index:]
+			else:
+				column_lines[i] += ","
+	script += "\n".join(column_lines)
 	for fk in foreign_keys:
 		constraint_name, column_name, foreign_table_name, foreign_column_name = fk
 		script += f",\n    FOREIGN KEY ({column_name}) REFERENCES {foreign_table_name}({foreign_column_name})"
@@ -140,20 +158,24 @@ class Dillerbase():
 				table_scripts.append(_get_create_table_script(table_name, cursor))
 			return "\n\n".join(table_scripts)
 
-	def query(self, query: str):
+	def query(self, query: str, include_headers = False):
 		with self.connection.cursor() as cursor:
 			# Fetch all table names
 			try:
 				cursor.execute(query)
-				return cursor.fetchall()
+				data = cursor.fetchall()
+				if include_headers:
+					headers = [desc[0] for desc in cursor.description]
+					data.insert(0, headers)
+				return data
 			except Exception as e:
 				self.connection.rollback()
 				raise
 
 	def query_as_table(self, query: str, lines_max = 5):
-		results = self.query(query)
+		results = self.query(query, True)
 		if len(results) > lines_max:
-			table = create_markdown_table(results[:lines_max])
+			table = create_markdown_table(results[:lines_max], True)
 			table += f"...{len(results) - lines_max} more rows not shown..."
 			return table
 		else:

@@ -92,10 +92,13 @@ class StepType(Enum):
 	ACTION_BUTTON = ("Action Button",     "fas fa-circle-play")
 	WEB_ASSISTANT = ("Phone Assistant",   "fas fa-user")
 	WEB_THOUGHT = ("Phone Thought",       "fas fa-lightbulb")
+	MIC_ACTION = ("Mic Action",           "fas fa-microphone")
 
 	CODE_WRITER = ("Code Assistant",      "fas fa-pencil")
 	OBSIDIAN_RUNNER = ("Obsidian Runner", "fas fa-file-lines")
 
+	HOME_ASSISTANT = ("Home Assistant",  "fas fa-house")
+	QUERY_MAP = ("Query Maps",       "fas fa-map")
 	QUERY_DATABASE = ("Query Database",  "fas fa-database")
 	RUNNING_CODE = ("Running Code",  "fas fa-terminal")
 	FUNCTION = ("Function",          "fas fa-terminal")
@@ -104,6 +107,8 @@ class StepType(Enum):
 	TRANSCRIBE = ("Transcribing",    "fas fa-feather-pointed")
 	TTS = ("TTS",                    "fas fa-comment-dots")
 	SPEAKING = ("Speaking",          "fas fa-person-harassing")
+
+	CUSTOM = ("Custom",          "fas fa-wand-magic-sparkles")
 	def __init__(self, pretty_name: str, icon: str):
 		self.pretty_name = pretty_name
 		self.icon = icon
@@ -334,9 +339,12 @@ class Context():
 			for i, line in enumerate(step.logs):
 				text_prefix = indent_str * indent_level
 				text_postfix = ""
-				if i == 0 and indent_level > 0:
-					text_prefix = text_prefix[:0 - len(step_prefix)] + step_prefix
-					text_postfix = " " + step.get_log_postfix()
+				if i == 0:
+					if indent_level > 0:
+						text_prefix = text_prefix[:0 - len(step_prefix)] + step_prefix
+						text_postfix = " " + step.get_log_postfix()
+				else:
+					text_prefix = indent_str * (indent_level + 1)
 				text = f"{text_prefix}{line.text}{text_postfix}"
 				lines.append(LogMessage(text, line.timestamp, line.counter))
 			for child in step.child_steps:

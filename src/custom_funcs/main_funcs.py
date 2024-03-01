@@ -102,7 +102,7 @@ async def repeat_me(ctx: Context, text: str):
 	await ctx.say(text)
 
 async def ask_database(ctx: Context, prompt: str):
-	"""Ask my personal database a question. This DB has information about dota games, bike rides, and song ive listened to"""
+	"""Ask my personal database a question. This DB has information about dota games, bike rides, skiing, and song ive listened to"""
 	with Dillerbase() as db:
 		system_prompt = """Write a postgreSQL query to answer the user's request. The query should be the only thing contained in the response, and should be enclosed in a markdown-style ```sql code block. After I run the query, I'll give you the results and you can format the output for me, but don't worry about that until the user asks for it.
 
@@ -154,7 +154,7 @@ The database you are writing this query for has schema matching the following:""
 		conversator = ctx.get_conversator()
 		conversator.input_user(prompt)
 		conversator.input_system(f"The postgres database has been queried via this query:\n{successful_query}\n The response to this query was:\n{result_table}\n")
-		conversator.input_system("Respond to the user's initial question in a single sentance using the provided data. If there is a small number, say it with 2 decimal levels of precision, unless it is .0, in which case treat it as an int")
+		conversator.input_system("Respond to the user's initial question in a single sentance using the provided data. Round any numbers to the nearest integer, unless the number is less than 10.")
 		response = await conversator.get_response(
 			ConvGenArgs(step_name="Interpret Results")
 		)

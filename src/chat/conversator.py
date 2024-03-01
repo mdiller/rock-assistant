@@ -128,9 +128,9 @@ class TokenCounter():
 	
 	def get_total_price(self):
 		# 1 micro cent is 0.000001 cents. 
-		# chatgpt 3.5 input is $0.001 per 1k tokens, or 1 microcent per token
-		# output is 2 microcents per token
-		return PreciseMoney(self.input_count + (self.output_count * 2))
+		# chatgpt 3.5 input is $0.5 per 1M tokens, or 0.5 microcent per token
+		# output is 1.5 microcents per token
+		return PreciseMoney(int(round((self.input_count * 0.5) + (self.output_count * 1.5))))
 	
 	def __repr__(self):
 		price = self.get_total_price()

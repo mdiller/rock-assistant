@@ -154,8 +154,10 @@ class FunctionsRunner():
 		return text
 	
 	def parse_func_call(self, text: str) -> FunctionCall:
+		if text.startswith("```\n") and text.endswith("\n```"):
+			text = text.replace("```", "").strip()
 		self.special_variables = []
-		arg_pattern = f"(\"[^\"]*\"|{'|'.join(map(lambda v: v.name, self.special_variables))})"
+		arg_pattern = f"(?:[a-z_]+=)?(\"[^\"]*\"|{'|'.join(map(lambda v: v.name, self.special_variables))})"
 		args_pattern = f"(?:|{arg_pattern}|{arg_pattern}(?:, ?{arg_pattern})+)"
 		pattern = f"^([A-Z_]+)(?:\({args_pattern}\)|)$"
 		match = re.search(pattern, text)
@@ -188,9 +190,10 @@ class FunctionsRunner():
 				output_limit=75)
 		)
 		
-		for response in responses:
+		for i, response in enumerate(responses):
 			func_call = self.parse_func_call(response)
 			if func_call is not None:
+				self.ctx.log(f"Using interpreted OPTION #{i}")
 				return func_call
 		
 		return FunctionCall("GIVE_UP", [])
