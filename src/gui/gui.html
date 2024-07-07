@@ -10,6 +10,12 @@
 		<div id="header" >
 			Assistant
 		</div>
+		<div id="content2">
+			<!-- <img src="http://localhost:8080/files/temp.png" /> -->
+		</div>
+		<div id="attachment">
+			<!-- <img src="http://localhost:8080/files/temp.png" /> -->
+		</div>
 		<div id="contents">
 
 		</div>
@@ -18,8 +24,12 @@
 
 <script>
 
+var STATUSBAR_ID = "statusbar";
 var CONTAINER = document.getElementById("container");
+var CONTENT2 = document.getElementById("content2");
 var ROOT_DIV = document.getElementById("contents");
+var ATTACHMENT_DIV = document.getElementById("attachment");
+var HEADER_DIV = document.getElementById("header");
 
 function restart_close_timer() {
 	CONTAINER.classList.remove("done");
@@ -32,13 +42,37 @@ var start_time = null;
 function update(context) {
 	if (context.start_time != start_time) {
 		start_time = context.start_time;
-		ROOT_DIV.innerHTML = ""; // reset if we have a new root
+
+		// reset all things
+		HEADER_DIV.innerHTML = "Assistant";
+		CONTENT2.innerHTML = "";
+		ROOT_DIV.innerHTML = ""; 
+		ATTACHMENT_DIV.innerHTML = "";
+
+		// reset status bar
+		var status_ele = document.getElementById(STATUSBAR_ID);
+		if (status_ele) {
+			status_ele.remove();
+			CONTAINER.classList.remove("dashboard_mode");
+		}
+
 		CONTAINER.classList.remove("done");
 		CONTAINER.classList.remove("idle");
 	}
 	
 	if (context.is_done) {
 		CONTAINER.classList.add("idle");
+	}
+
+	if (context.image_url) {
+		var img = ATTACHMENT_DIV.querySelector('img');
+		if (!img) {
+			// No img element found, create one
+			var img = document.createElement('img');
+			var randomVersion = Math.floor(Math.random() * 1000000).toString();
+			img.src = context.image_url + "?version=" + randomVersion;  // Set the src attribute to your desired value
+			ATTACHMENT_DIV.appendChild(img);  // Append the img to the attachment
+		}
 	}
 
 	function updateStep(step, parent_element) {
@@ -67,7 +101,36 @@ function update(context) {
 			})
 		}
 	}
-	updateStep(context.root_step, ROOT_DIV);
+	function updateDashboard(dashboard_data) {
+		if (!CONTAINER.classList.contains("dashboard_mode")) {
+			CONTAINER.classList.add("dashboard_mode");
+		}
+		if (dashboard_data.status) {
+			var element = document.getElementById(STATUSBAR_ID);
+			if (!element) {
+				CONTAINER.insertAdjacentHTML('beforeend', `<div id="${STATUSBAR_ID}"></div>`);
+				element = document.getElementById(STATUSBAR_ID);
+			}
+			if (dashboard_data.status.color) {
+				element.style = `background-color: ${dashboard_data.status.color}`;
+			}
+			if (dashboard_data.status.html) {
+				element.innerHTML = dashboard_data.status.html;
+			}
+		}
+		if (dashboard_data.title) {
+			HEADER_DIV.innerHTML = dashboard_data.title;
+		}
+		if (dashboard_data.content) {
+			CONTENT2.innerHTML = dashboard_data.content;
+		}
+	}
+	if (context.root_step) {
+		updateStep(context.root_step, ROOT_DIV);
+	}
+	if (context.dashboard_data) {
+		updateDashboard(context.dashboard_data);
+	}
 }
 </script>
 
@@ -153,6 +216,7 @@ body {
 } */
 
 #container {
+	position: relative;
 	background-color: var(--color0);
 	padding: var(--outer-border);
 	/* border: 2px solid var(--color1); */
@@ -275,6 +339,66 @@ body {
 body::-webkit-scrollbar {
 	display: none;
 }
+
+#attachment img {
+	margin: auto;
+	max-height: 150px;
+	max-width: 150px;
+	margin-bottom: 8px;
+	border-radius: 8px;
+}
+#attachment {
+	text-align: center;
+}
+
+#container.dashboard_mode {
+	padding-bottom: calc(var(--outer-border) + 30px);
+}
+
+#container.dashboard_mode #contents {
+	display: none;
+}
+
+#container.dashboard_mode #header {
+	font-size: 36px;
+}
+
+#content2 {
+	color: grey;
+	margin: auto;
+	text-align: center;
+	width: 100%;
+	overflow: hidden;
+	white-space: nowrap;
+}
+
+#content2 span {
+	color: grey;
+	font-weight: bold;
+	text-decoration: underline;
+}
+
+#statusbar {
+	position: absolute;
+	bottom: 1px;
+	left: 0px;
+	right: 1px;
+	padding: 3px 12px;
+	border-radius: 0 0 calc(var(--border-radius) * 1.75) calc(var(--border-radius) * 1.75);
+	background-color: var(--color1);
+	transition: background-color 0.5s;
+}
+
+#statusbar span:first-child {
+	float: left;
+	font-weight:700;
+}
+
+#statusbar span:last-child {
+	float: right;
+	color: grey;
+}
+
 </style>
 
 </html>

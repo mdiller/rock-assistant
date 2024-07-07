@@ -1,16 +1,26 @@
 '''''
 PROMPT:
 
-[- Used So Far: 0.0¢ | 0 tokens -]
+[- Used So Far: 0.1383¢ | 1420 tokens -]
 '''''
 from aiohttp import web
 from aiohttp.web_request import Request
 import asyncio
 from colorama import Fore
+import os
+from utils.settings import settings
 
+from context import WebArgs
 from assistant_engine import AssEngine
 
+from aiohttp import FormData
+
 SERVER_PORT = 8080
+
+WEB_FILES_PATH = settings.resource("web_files")
+
+if not os.path.exists(WEB_FILES_PATH):
+	os.makedirs(WEB_FILES_PATH)
 
 class WebServer():
 	engine: AssEngine
@@ -20,7 +30,10 @@ class WebServer():
 	async def setup(self):
 		app = web.Application()
 
+		app.router.add_static("/files/", WEB_FILES_PATH, name="static", show_index=False)
 		app.router.add_route('GET', '/{tail:.*}', self.handle_request)
+		app.router.add_route('POST', '/upload_recording', self.handle_upload)
+
 		print("starting server...")
 
 		# Create the server and run it
@@ -35,6 +48,8 @@ class WebServer():
 
 		modifiers = request.query.get("modifiers")
 
+		web_args = WebArgs(request)
+
 		if request.path == "/mic_stop":
 			await self.engine.transcribe_microphone_stop()
 			return web.Response(text="done!")
@@ -43,31 +58,61 @@ class WebServer():
 			print(f"{Fore.YELLOW}ignored (busy)")
 			return web.Response(text="we're busy")
 
+		filename = None
+
 		if request.path == "/mic_start":
 			if modifiers:
-				if modifiers == "Shift":
-					asyncio.ensure_future(self.engine.mic_to_clipboard())
+				if "Shift" in modifiers:
+					asyncio.ensure_future(self.engine.mic_to_clipboard(web_args))
 				elif modifiers == "Control":
 					asyncio.ensure_future(self.engine.save_last_transcription())
 			else:
 				asyncio.ensure_future(self.engine.main_chat())
 		if request.path == "/mic_start_thought":
 			if modifiers and modifiers == "Control":
-				asyncio.ensure_future(self.engine.save_last_transcription())
+				asyncio.ensure_future(self.engine.dashboard(web_args))
 			else:
-				asyncio.ensure_future(self.engine.record_thought_local())
+				asyncio.ensure_future(self.engine.record_thought_local(web_args))
 		elif request.path == "/run":
-			file = request.query.get("file")
-			asyncio.ensure_future(self.engine.action_button(file))
+			asyncio.ensure_future(self.engine.action_button(web_args))
 		elif request.path == "/prompt":
-			query = request.query.get("q")
-			filename = await self.engine.web_prompt(query)
+			filename = await self.engine.web_prompt(web_args)
 			return web.FileResponse(filename)
 		elif request.path == "/thought":
-			text = request.query.get("text")
-			filename = await self.engine.web_thought(text)
+			filename = await self.engine.web_thought(web_args)
+		elif request.path == "/dashboard":
 			return web.FileResponse(filename)
 		else:
 			return web.Response(text="Unknown Request!", status=404)
+		
+		if filename:
+			return web.FileResponse(filename)
 
 		return web.Response(text="done!")
+
+	async def handle_upload(self, request: Request):
+		print(f"{Fore.BLUE}WEB_POST> {request.path_qs}{Fore.WHITE}")
+
+		reader = await request.multipart()
+		file = await reader.next()
+
+		while file and not file.filename:
+			file = await reader.next()
+		
+		if file is None:
+			return web.Response(text="No file uploaded ya dingus", status=400)
+		
+		file_extension = "mp3" # file.filename.split('.')[-1] (just hardcoding this for now cuz stupid mp4 stuff)
+		filepath = settings.resource(f"sounds/_uploaded.{file_extension}")
+		filepath = os.path.abspath(filepath)
+
+		with open(filepath, 'wb+') as f:
+			while True:
+				chunk = await file.read_chunk()  # Default chunk size is 8192 bytes
+				if not chunk:
+					break
+				f.write(chunk)
+
+		out_filename = await self.engine.write_thought_recording(filepath)
+
+		return web.FileResponse(out_filename)

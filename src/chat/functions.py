@@ -27,6 +27,7 @@ class AssFunctionArg():
 		self.type: typing.Type = None
 		self.type_name: str = None
 		self.optional: bool = False
+		self.hidden: bool = name.startswith("_")
 	
 	def toDoc(self):
 		typestr = str(self.type).split("'")[1]
@@ -51,7 +52,8 @@ class AssFunction():
 		self.args: typing.List[AssFunctionArg] = []
 	
 	def toDoc(self):
-		return f"{self.name.upper()}({', '.join(map(lambda a: a.toDoc(), self.args))}) ; {self.description}"
+		shown_args = list(filter(lambda a: not a.hidden, self.args))
+		return f"{self.name.upper()}({', '.join(map(lambda a: a.toDoc(), shown_args))}) ; {self.description}"
 	
 	def try_load(self):
 		self.args = []
@@ -208,8 +210,9 @@ class FunctionsRunner():
 
 	async def _run_func(self, func_call: FunctionCall):
 		with self.ctx.step(StepType.FUNCTION, func_call.func_name.upper() + "()") as step:
-			final_state = await self._run_func_internal(func_call)
+			final_state, result = await self._run_func_internal(func_call)
 			step.final_state = final_state
+			return result
 
 	async def _run_func_internal(self, func_call: FunctionCall) -> StepFinalState:
 		func_name = func_call.func_name
@@ -219,7 +222,7 @@ class FunctionsRunner():
 		selected_func: AssFunction
 		selected_func = next((func for func in self.functions if func.name.upper() == func_name.upper()), None)
 		if selected_func is None:
-			return StepFinalState.CHAT_ERROR # Attempted to call fictional function
+			return (StepFinalState.CHAT_ERROR, None) # Attempted to call fictional function
 		
 		for i in range(len(selected_func.args)):
 			arg = selected_func.args[i]
@@ -227,7 +230,7 @@ class FunctionsRunner():
 				try:
 					args_list[i] = arg.type(args_list[i])
 				except Exception as e:
-					return StepFinalState.CHAT_ERROR # Un-fixable type '{type(args_list[i])}' passed to arg {arg.name} of {func_name}
+					return (StepFinalState.CHAT_ERROR, None) # Un-fixable type '{type(args_list[i])}' passed to arg {arg.name} of {func_name}
 
 		try:
 			# TODO: make this so it works on async and non-async stuff
@@ -245,9 +248,10 @@ class FunctionsRunner():
 			raise
 		if response is not None:
 			if isinstance(response, StepFinalState):
-				return response
+				return (response, None)
 			elif isinstance(response, str):
 				await self.ctx.say(response, is_finish=True)
+			return (StepFinalState.SUCCESS, response)
 		else:
-			return StepFinalState.SUCCESS
+			return (StepFinalState.SUCCESS, None)
 

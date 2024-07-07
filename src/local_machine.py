@@ -7,8 +7,9 @@ import pyperclip
 
 from utils.settings import settings
 import utils.utils as utils
+from pynput.keyboard import Key, Controller
 
-MICROPHONE_TIMEOUT_SECONDS = 120.0
+MICROPHONE_TIMEOUT_SECONDS = 15 * 60.0
 
 # This represents stuff connected to the local machine like playing/recording audio and clipboard grabbing etc
 
@@ -30,6 +31,7 @@ class LocalMachine():
 
 	async def _play_wav(self, filename, lock_set=False):
 		decoded_song = await utils.run_async(lambda: AudioSegment.from_wav(filename))
+		decoded_song -= 15 # turn volume down by 15 db
 		if lock_set:
 			await utils.run_async(lambda: playback.play(decoded_song))
 			self.play_lock.release()
@@ -54,6 +56,18 @@ class LocalMachine():
 	
 	def set_clipboard_text(self, text: str):
 		return pyperclip.copy(text)
+	
+	# press paste and enter
+	def paste_and_enter(self):
+		keyboard = Controller()
+
+		keyboard.press(Key.ctrl.value)
+		keyboard.press("v")
+		keyboard.release("v")
+		keyboard.release(Key.ctrl.value)
+
+		keyboard.press(Key.enter.value)
+		keyboard.release(Key.enter.value)
 
 	# start recording and wait until the recording has finished
 	async def record_microphone(self, logger):
@@ -139,7 +153,7 @@ class LocalMachine():
 		logger.log(f"{self.frames_saved / recording_rate:.2f} seconds of audio recorded")
 		
 		elapsed_time = datetime.datetime.now() - stream_starttime
-		if elapsed_time < datetime.timedelta(seconds=1):
+		if elapsed_time < datetime.timedelta(seconds=2):
 			logger.log("ignoring: wasnt recording long enough")
 			return None
 

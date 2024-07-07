@@ -15,6 +15,7 @@ import typing
 from openai import OpenAI
 from apis.audio import AudioApi
 from gui.gui import AssistantGui
+import shutil
 
 from colorama import Fore
 from utils.settings import settings
@@ -22,6 +23,19 @@ from local_machine import LocalMachine
 import obsidian
 from utils.settings import Settings
 from utils.utils import print_color
+import re
+import html
+
+
+WEB_FILES_PATH = settings.resource("web_files")
+
+class WebArgs():
+	def __init__(self, request):
+		self.text : str = request.query.get("text")
+		self.target : str = request.query.get("target")
+		self.attachment : str = request.query.get("attachment")
+		self.modifiers : str = request.query.get("modifiers")
+		self.exe : str = request.query.get("exe")
 
 # make a thing to move the decimal place manually for me
 class PreciseMoney():
@@ -93,6 +107,7 @@ class StepType(Enum):
 	WEB_ASSISTANT = ("Phone Assistant",   "fas fa-user")
 	WEB_THOUGHT = ("Phone Thought",       "fas fa-lightbulb")
 	MIC_ACTION = ("Mic Action",           "fas fa-microphone")
+	SHOW_DASHBOARD = ("Dashboard",        "fas fa-gauge")
 
 	CODE_WRITER = ("Code Assistant",      "fas fa-pencil")
 	OBSIDIAN_RUNNER = ("Obsidian Runner", "fas fa-file-lines")
@@ -223,7 +238,7 @@ if TYPE_CHECKING:
 	import chat.conversator
 # TODO: replace localmachine etc below with interfaces in future
 class Context():
-	def __init__(self, root_step: Step, openai_client: OpenAI, local_machine: LocalMachine, config: obsidian.AssistantConfig, source: ContextSource, audio_api: AudioApi):
+	def __init__(self, root_step: Step, openai_client: OpenAI, local_machine: LocalMachine, config: obsidian.AssistantConfig, source: ContextSource, audio_api: AudioApi, web_args: WebArgs):
 		global LOG_COUNTER
 		LOG_COUNTER = 0
 		self.root_step = root_step
@@ -233,6 +248,7 @@ class Context():
 		self.current_step = self.root_step
 		self.ass_config = config
 		self.audio_api = audio_api
+		self.web_args = web_args
 		self.conversators: typing.List['chat.conversator.Conversator'] = []
 		self.source = source
 		self.final_state: StepFinalState = None
@@ -240,6 +256,8 @@ class Context():
 		self.finish_audio_response: str = None
 		self.say_log: typing.List[str] = []
 		self.original_prompt: str = None
+		self.web_attached_image_name: str = None
+		self.dashboard_data = None
 	
 	# METHODS FOR STEPS TO USE
 	def get_conversator(self) -> 'chat.conversator.Conversator':
@@ -293,14 +311,53 @@ class Context():
 			self.local_machine.gui.update(self.toGuiJson())
 
 	def toGuiJson(self):
-		return {
+		data = {
 			"is_done": self.final_state is not None,
 			"start_time": self.root_step.time_start.isoformat(),
 			"root_step": self.root_step.toGuiJson()
 		}
+		if self.dashboard_data:
+			data["dashboard_data"] = self.dashboard_data
+		if self.web_attached_image_name:
+			data["image_url"] = f"http://localhost:8080/files/{self.web_attached_image_name}"
+		return data
 	
 	# START/END EVENTS
 	def on_start(self):
+		if self.root_step.step_type == StepType.SHOW_DASHBOARD:
+			title = datetime.datetime.now().strftime("%I:%M %p")
+			if title.startswith("0"):
+				title = title[1:]
+			self.dashboard_data = { 
+				"title": title,
+				"content": None,
+				"status": None
+			}
+			if self.local_machine.gui.has_clipboard_image():
+				self.dashboard_data["content"] = "<span>Clipboard</span>"
+				self.web_args.attachment = "CLIPBOARD_IMAGE"
+			else:
+				clip_text = self.local_machine.get_clipboard_text()
+				if clip_text:
+					clip_text = clip_text.strip()
+					if "\n" in clip_text:
+						clip_text = clip_text[:clip_text.index("\n")] + "..."
+					truncate_len = 30
+					if len(clip_text) > truncate_len:
+						clip_text = clip_text[:(truncate_len - 3)] + "..."
+					if clip_text and clip_text != "" and clip_text != "...":
+						clip_text = html.escape(clip_text)
+						clip_text = re.sub(r'[\x00-\x1F\x7F\\]', "", clip_text)
+						if clip_text and clip_text != "" and clip_text != "...":
+							self.dashboard_data["content"] = f"<span>Clipboard</span><br>{clip_text}"
+
+		if self.web_args and self.web_args.attachment and self.web_args.attachment == "CLIPBOARD_IMAGE":
+			image_filepath = settings.resource("cache/clipboard_image.png")
+			self.local_machine.gui.save_clipboard_image(image_filepath)
+			self.web_args.attachment = image_filepath
+		if self.web_args and self.web_args.attachment and self.web_args.attachment.endswith(".png"):
+			self.web_attached_image_name = "example_image.png"
+			shutil.copy(self.web_args.attachment, os.path.join(WEB_FILES_PATH, self.web_attached_image_name))
 		self.update_gui()
 		if self.source == ContextSource.LOCAL_MACHINE:
 			self.local_machine.gui.show()
@@ -403,7 +460,8 @@ class Context():
 		return result
 	
 	def saveLog(self):
-		logs_dir = os.path.join(obsidian.ROOT_DIR, self.ass_config.functions_dir, "../logs")
+		latest_log_dir = os.path.join(obsidian.ROOT_DIR, self.ass_config.functions_dir, "..")
+		logs_dir = settings.logs_dir
 		today_logs_dir = os.path.join(logs_dir, self.root_step.time_start.strftime('%Y-%m-%d'))
 		if not os.path.exists(today_logs_dir):
 			os.makedirs(today_logs_dir)
@@ -412,7 +470,7 @@ class Context():
 		log_filepath = os.path.join(today_logs_dir, log_filename)
 		with open(log_filepath, "w+", encoding="utf-8") as f:
 			f.write(markdown)
-		log_filepath = os.path.join(logs_dir, "latest_log.md")
+		log_filepath = os.path.join(latest_log_dir, "latest_log.md")
 		with open(log_filepath, "w+", encoding="utf-8") as f:
 			f.write(markdown)
 

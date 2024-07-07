@@ -169,11 +169,11 @@ class WavBuilder():
 		if ease_func:
 			self.waveform *= ease_func(t, duration)
 
-	def save_and_play(self, filename):
+	def save_and_play(self, filename, volume_mult = 1):
 		waveform = self.waveform
 
 		# lower volume
-		volume_adjust = 0.16
+		volume_adjust = 0.2 * volume_mult
 
 		# Normalize waveform to 16-bit range
 		waveform *= volume_adjust * 32767 / np.max(np.abs(waveform))
@@ -187,6 +187,7 @@ class WavBuilder():
 
 		write(filename, SAMPLE_RATE, waveform)
 		audio = AudioSegment.from_wav(filename)
+		audio -= 15 # -15 DB is what we use in the assistant app
 		playback.play(audio)
 		self.waveform = np.array([])
 
@@ -196,12 +197,12 @@ tempo = 0.2
 # GOOD WAKE
 wav_builder.add_slide("G3", "C4", tempo, EASE_EXP_IN)
 wav_builder.add_note("G4", tempo * 2, EASE_PLINK)
-wav_builder.save_and_play("resource/sounds/wake.wav")
+wav_builder.save_and_play("resource/sounds/wake.wav", 0.5)
 
 # GOOD UNWAKE
 wav_builder.add_slide("G4", "E4", tempo, EASE_EXP_IN)
 wav_builder.add_note("C4", tempo * 2, EASE_PLINK)
-wav_builder.save_and_play("resource/sounds/unwake.wav")
+wav_builder.save_and_play("resource/sounds/unwake.wav", 0.5)
 
 # SUCCESS
 wav_builder.add_note("C5", tempo * 2, EASE_PLINK_standalone)

@@ -62,6 +62,10 @@ class Settings:
 	def resourcedir(self):
 		return os.path.join(ROOT_DIR, "resource/")
 
+	@property
+	def logs_dir(self):
+		return os.path.join(ROOT_DIR, "LOG_VAULT")
+
 	def resource(self, dir):
 		return os.path.join(self.resourcedir, dir)
 

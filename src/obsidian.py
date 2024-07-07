@@ -1,17 +1,16 @@
-'''''
-PROMPT:
-
-[- Used So Far: 0.0426¢ | 286 tokens -]
-'''''
 import os
 import re
 import datetime
 import yaml
+import random
+import string
+import shutil
 
 from utils.settings import settings
 
 # Set this before running any obsidian stuff
 ROOT_DIR = settings.obsidian_root
+OBS_ATTACHMENTS_DIR = os.path.join(ROOT_DIR, "_vault/Attachments")
 
 def file(path):
 	return ObsidianFile(path)
@@ -30,6 +29,20 @@ def fix_path(path, print_if_missing=True):
 			print(f"ERROR OBS FILE NOT FOUND: {path}")
 		return None
 	return path
+
+# attaches the file and returns a link to the attached file
+def attach_file(src_filepath):
+	filename = os.path.basename(src_filepath)
+
+	new_filepath = os.path.join(OBS_ATTACHMENTS_DIR, filename)
+
+	filepath_no_ext, ext = os.path.splitext(new_filepath)
+	while os.path.exists(new_filepath):
+		random_string = ''.join(random.choice(string.ascii_uppercase) for _ in range(8))
+		new_filepath = filepath_no_ext + f"_{random_string}" + ext
+
+	shutil.copy(src_filepath, new_filepath)
+	return os.path.basename(new_filepath)
 
 # <div class="rock-assistant-out"><span>Rock Assistant</span><span>0.0202¢ | 111 tokens | 5:31pm Dec 12, 2023</span></div>
 ASS_OUTPUT_PATTERN = re.compile("\n<div class=\"rock-assistant-out\"><span>Rock Assistant</span><span>(?:([^\n]+) \| |)([^\n]+)</span></div>\n\n([\s\S]*)$", re.MULTILINE | re.DOTALL)
@@ -133,12 +146,18 @@ class ObsidianFile():
 	def add_note(self, text):		
 		current_time = datetime.datetime.now()
 		timestamp_lifespan = 3
+
+		# determine if we should include date
+		include_day = self.metadata is None or self.metadata.get("date") is None
+
 		recent_timestamps = []
 		for i in range(timestamp_lifespan + 1):
-			time = current_time - datetime.timedelta(minutes=i)
-			time = time.strftime("%I:%M %p")
+			the_datetime = current_time - datetime.timedelta(minutes=i)
+			time = the_datetime.strftime("%I:%M %p")
 			if time.startswith("0"):
 				time = " " + time[1:]
+			if include_day:
+				time += the_datetime.strftime(" (%d-%b-%Y)")
 			recent_timestamps.append(f"\n<span class=\"dillerm-timestamp\">{time}</span>\n")
 		
 		found_recent_timestamp = False

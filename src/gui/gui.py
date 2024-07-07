@@ -115,6 +115,17 @@ class AssistantGui():
 		self.app = QApplication(sys.argv)
 		self.window = AssistantGuiWindow()
 	
+	def has_clipboard_image(self):
+		clipboard = self.app.clipboard()
+		image = clipboard.image()
+		return not image.isNull()
+	
+	def save_clipboard_image(self, filename):
+		clipboard = self.app.clipboard()
+		image = clipboard.image()
+		# if not image.isNull():
+		image.save(filename)
+		
 	def run_till_done(self):
 		timer = QTimer()
 		timer.timeout.connect(lambda: None)
@@ -142,6 +153,7 @@ class AssistantGui():
 # Hot reload the gui.html file for easy editing
 def main():
 	gui = AssistantGui()
+	dashboard = True
 
 	async def main_async():
 		gui.show()
@@ -172,22 +184,34 @@ def main():
 								"classes": [ "loading" ],
 							}
 						]
+					},
+					"dashboard_data": {
+						"title": "5:00 PM",
+						"content": "<span>Clipboard</span><br>testing 123",
+						"status": {
+							"color": "#133cee",
+							"html": "<span>5:30pm (24 mins)</span><span>30mi</span>"
+						}
 					}
 				}
 				print("reload!")
 				# Read the contents of the file
 				gui.reload()
 				await asyncio.sleep(0.5)
+				if not dashboard:
+					FAKE_DATA["dashboard_data"] = None
+				
 				gui.update(FAKE_DATA)
-				await asyncio.sleep(0.5)
-				FAKE_DATA["root_step"]["child_steps"][1]["classes"] = []
-				FAKE_DATA["root_step"]["child_steps"].append({
-					"id": "example12-3",
-					"name": "Step 3",
-					"icon": "fab fa-python",
-					"classes": [ "loading" ],
-				})
-				gui.update(FAKE_DATA)
+				if not dashboard:
+					await asyncio.sleep(0.5)
+					FAKE_DATA["root_step"]["child_steps"][1]["classes"] = []
+					FAKE_DATA["root_step"]["child_steps"].append({
+						"id": "example12-3",
+						"name": "Step 3",
+						"icon": "fab fa-python",
+						"classes": [ "loading" ],
+					})
+					gui.update(FAKE_DATA)
 			await asyncio.sleep(1)
 
 	def run_asyncio_loop(loop: asyncio.AbstractEventLoop):

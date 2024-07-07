@@ -3,7 +3,10 @@ _temp/
 __pycache__/
 settings.json
 cache/
+resource/web_files
 
 src/custom_funcs/private_funcs.py
 
 saved_transcriptions
+
+LOG_VAULT

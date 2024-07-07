@@ -39,6 +39,7 @@ class CodeLanguage():
 ALL_CODELANGS = [
 	CodeLanguage("python", "py", "'''''", "'''''", "#"),
 	CodeLanguage("javascript", "js", "/*", "*/", "//"),
+	CodeLanguage("javascript", "html", "/*", "*/", "//"),
 	CodeLanguage("typescript", "ts", "/*", "*/", "//", [ "js", "javascript" ]),
 	CodeLanguage("typescript", "tsx", "/*", "*/", "//", [ "js", "javascript" ]),
 	CodeLanguage("AutoHotkey", "ahk", "/*", "*/", ";"),

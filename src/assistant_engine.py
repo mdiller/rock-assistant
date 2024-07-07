@@ -1,7 +1,7 @@
 import asyncio
 import typing
 from code_writer.CodeFile import CodeLanguage
-from context import AssSound, Context, ContextSource, Step, StepFinalState, StepType
+from context import AssSound, Context, ContextSource, Step, StepFinalState, StepType, WebArgs
 import chat.conversator as conv
 import asyncio
 import obsidian
@@ -40,13 +40,14 @@ class AssEngine():
 		self.audio_api = AudioApi(openai_client, config)
 		self.config = config
 		self.current_context = None
+		self.temp_lock = None
 	
 	def is_busy(self):
 		if self.current_context is None:
 			return False
 		return self.current_context.final_state is None
 	
-	def new_ctx(self, step_type: StepType, source: ContextSource, step_name: str = None) -> Context:
+	def new_ctx(self, step_type: StepType, source: ContextSource, step_name: str = None, web_args: WebArgs = None) -> Context:
 		# TODO: fix this root step bullshit to be better
 		ctx = Context(
 			Step(None, step_type, name = step_name),
@@ -54,11 +55,14 @@ class AssEngine():
 			self.local_machine,
 			self.config,
 			source,
-			audio_api=self.audio_api)
+			audio_api=self.audio_api,
+			web_args=web_args)
 		self.current_context = ctx
 		return ctx
 
 	async def transcribe_microphone_stop(self):
+		if self.temp_lock and self.temp_lock.locked():
+			self.temp_lock.release()
 		await self.local_machine.record_microphone_stop()
 
 	async def transcribe_microphone(self, ctx: Context):
@@ -88,13 +92,33 @@ class AssEngine():
 		
 		return spoken_text
 
-	async def record_thought_local(self):
-		with self.new_ctx(StepType.THOUGHT_LOCAL, ContextSource.LOCAL_MACHINE) as ctx:
+	async def write_thought_recording(self, filename):
+		with self.new_ctx(StepType.THOUGHT_LOCAL, ContextSource.WEB, "Long Thought") as ctx:
+			file_extension = filename.split('.')[-1]
+			timestamp = datetime.datetime.now()
+			attach_filename = timestamp.strftime('%Y-%m-%d_%H-%M-%S') + "." + file_extension
+			attach_fullpath = os.path.join(settings.obsidian_root, "_vault/Attachments", attach_filename)
+			shutil.copy(filename, attach_fullpath)
+
+			with ctx.step(StepType.TRANSCRIBE):
+				spoken_text = await self.audio_api.transcribe(filename)
+				ctx.log(f"TRANSCRIPTION: \"{spoken_text}\"")
+
+			if spoken_text is None:
+				spoken_text = ""
+			
+			spoken_text = f"![[{attach_filename}]]\n{spoken_text}"
+
+			await self.run_function(ctx, "write_down", [ spoken_text ])
+		return ctx.finish_audio_response
+
+	async def record_thought_local(self, web_args: WebArgs):
+		with self.new_ctx(StepType.THOUGHT_LOCAL, ContextSource.LOCAL_MACHINE, web_args = web_args) as ctx:
 			prompt_text = await self.transcribe_microphone(ctx)
 
 			if prompt_text is None:
 				return # nothing was said, so do nothing
-			
+
 			await self.run_function(ctx, "write_down", [ prompt_text ])
 
 	async def main_chat(self):
@@ -222,26 +246,34 @@ class AssEngine():
 	
 	async def run_function(self, ctx: Context, name: str, args: typing.List[str]):
 		func_runner = functions.FunctionsRunner(ctx)
-		await func_runner.run_func(name, args)
+		return await func_runner.run_func(name, args)
 	
-	async def web_prompt(self, prompt: str):
-		with self.new_ctx(StepType.WEB_ASSISTANT, ContextSource.WEB) as ctx:
-			await self.prompt_assistant(ctx, prompt)
+	async def web_prompt(self, web_args: WebArgs):
+		with self.new_ctx(StepType.WEB_ASSISTANT, ContextSource.WEB, web_args = web_args) as ctx:
+			await self.prompt_assistant(ctx, web_args.text)
 		return ctx.finish_audio_response
 
-	async def web_thought(self, thought: str):
-		with self.new_ctx(StepType.WEB_ASSISTANT, ContextSource.WEB) as ctx:
-			await self.run_function(ctx, "write_down", [ thought ])
+	async def web_thought(self, web_args: WebArgs):
+		with self.new_ctx(StepType.WEB_ASSISTANT, ContextSource.WEB, web_args = web_args) as ctx:
+			await self.run_function(ctx, "write_down", [ web_args.text ])
 		return ctx.finish_audio_response
-	
-	async def mic_to_clipboard(self):
-		with self.new_ctx(StepType.MIC_ACTION, ContextSource.LOCAL_MACHINE, "Mic To Clipboard") as ctx:
+
+	async def mic_to_clipboard(self, web_args: WebArgs):
+		do_paste = "Control" in web_args.modifiers
+		step_name = "Mic To Clipboard"
+		if do_paste:
+			step_name += " & Paste"
+		with self.new_ctx(StepType.MIC_ACTION, ContextSource.LOCAL_MACHINE, step_name, web_args = web_args) as ctx:
 			text = await self.transcribe_microphone(ctx)
 
 			if text is None:
 				return # nothing was said, so do nothing
 			with ctx.step(StepType.CUSTOM, "Copy To Clipboard"):
 				ctx.local_machine.set_clipboard_text(text)
+			
+			if do_paste:
+				with ctx.step(StepType.CUSTOM, "Pasting"):
+					ctx.local_machine.paste_and_enter()
 			
 	async def save_last_transcription(self):
 		with self.new_ctx(StepType.MIC_ACTION, ContextSource.LOCAL_MACHINE, "Save Last Transcription") as ctx:
@@ -253,6 +285,17 @@ class AssEngine():
 			with ctx.step(StepType.CUSTOM, "Copy File"):
 				shutil.copy(speechfile, out_path)
 			
+			file_extension = "mp3"
+			timestamp = datetime.datetime.now()
+			attach_filename = timestamp.strftime('%Y-%m-%d_%H-%M-%S') + "." + file_extension
+			attach_fullpath = os.path.join(settings.obsidian_root, "_vault/Attachments", attach_filename)
+			shutil.copy(speechfile, attach_fullpath)
+			
+			spoken_text = f"![[{attach_filename}]]"
+
+			await self.run_function(ctx, "write_down", [ spoken_text ])
+		return ctx.finish_audio_response
+			
 	async def _action_button(self, ctx: Context, file: str = None):
 		if file is None:
 			raise Exception("Action button pressed not on a file")
@@ -261,14 +304,40 @@ class AssEngine():
 				return await self.code_writer(ctx, file)
 			elif file.endswith(".md"):
 				return await self.run_file(ctx, file)
+			elif file.startswith("https://chatgpt.com/") or file.startswith("http://localhost:3000/c/"):
+				return await self.do_voice_to_paste(ctx, file)
 			else:
 				raise Exception(f"Unknown file type for action button: {file}")
 		# await self.run_function("write_down", [ "a thought" ])
+	
+	async def do_voice_to_paste(self, ctx: Context, url: str):
+		text = await self.transcribe_microphone(ctx)
+		if text is None:
+			return # nothing was said, so do nothing
+		with ctx.step(StepType.CUSTOM, "Copy To Clipboard"):
+			ctx.local_machine.set_clipboard_text(text)
+		
+		with ctx.step(StepType.CUSTOM, "Pasting"):
+			ctx.local_machine.paste_and_enter()
 
-	async def action_button(self, file: str = None):
-		with self.new_ctx(StepType.ACTION_BUTTON, ContextSource.LOCAL_MACHINE) as ctx:
+	async def action_button(self, web_args: WebArgs):
+		file = web_args.target
+		with self.new_ctx(StepType.ACTION_BUTTON, ContextSource.LOCAL_MACHINE, web_args = web_args) as ctx:
 			await ctx.play_sound(AssSound.TASK_START)
 			await self._action_button(ctx, file)
+
+	async def dashboard(self, web_args: WebArgs):
+		with self.new_ctx(StepType.SHOW_DASHBOARD, ContextSource.LOCAL_MACHINE, web_args = web_args) as ctx:
+			if self.temp_lock:
+				self.temp_lock.release()
+				self.temp_lock = None
+			self.temp_lock = asyncio.Lock()
+			await self.temp_lock.acquire()
+			with ctx.step(StepType.CUSTOM, "Get Dashboard"):
+				ctx.dashboard_data["status"] = await self.run_function(ctx, "_get_dashboard_status", [])
+			# wait till user is done
+			await self.temp_lock.acquire()
+			self.temp_lock = None
 
 	
 	async def on_startup(self):

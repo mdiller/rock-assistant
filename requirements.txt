@@ -4,3 +4,4 @@ play-sounds
 openai
 pyyaml
 tiktoken
+pynput
