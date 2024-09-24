@@ -17,6 +17,8 @@ from aiohttp import FormData
 
 SERVER_PORT = 8080
 
+FILE_MAX_SIZE_MB = 100
+
 WEB_FILES_PATH = settings.resource("web_files")
 
 if not os.path.exists(WEB_FILES_PATH):
@@ -28,7 +30,7 @@ class WebServer():
 		self.engine = engine
 	
 	async def setup(self):
-		app = web.Application()
+		app = web.Application(client_max_size=FILE_MAX_SIZE_MB*1024*1024)
 
 		app.router.add_static("/files/", WEB_FILES_PATH, name="static", show_index=False)
 		app.router.add_route('GET', '/{tail:.*}', self.handle_request)

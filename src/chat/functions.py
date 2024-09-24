@@ -250,7 +250,8 @@ class FunctionsRunner():
 			if isinstance(response, StepFinalState):
 				return (response, None)
 			elif isinstance(response, str):
-				await self.ctx.say(response, is_finish=True)
+				return (StepFinalState.SUCCESS, response)
+				# await self.ctx.say(response, is_finish=True) # this TTS happens later
 			return (StepFinalState.SUCCESS, response)
 		else:
 			return (StepFinalState.SUCCESS, None)
