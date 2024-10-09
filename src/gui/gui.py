@@ -153,7 +153,7 @@ class AssistantGui():
 # Hot reload the gui.html file for easy editing
 def main():
 	gui = AssistantGui()
-	dashboard = True
+	dashboard = False
 
 	async def main_async():
 		gui.show()
@@ -176,6 +176,7 @@ def main():
 								"name": "Step 1",
 								"icon": "fas fa-microphone",
 								"classes": [],
+								"gui_text": "Here is some example text that got transcribed. Here is another sentance of the text."
 							},
 							{
 								"id": "example12-2",

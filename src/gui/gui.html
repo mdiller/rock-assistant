@@ -95,6 +95,13 @@ function update(context) {
 				element.classList.remove(c);
 			}
 		});
+		if (step.gui_text) {
+			var text_id = `${step.id}_text`
+			var text_element = document.getElementById(text_id);
+			if (!text_element) {
+				element.insertAdjacentHTML('beforeend', `<div id="${text_id}" class="step_text">${step.gui_text}</div>`);
+			}
+		}
 		if (step.child_steps) {
 			step.child_steps.forEach(child_step => {
 				updateStep(child_step, element);
@@ -138,7 +145,7 @@ function update(context) {
 <style>
 :root {
 	--window-margin: 20px;
-	--window-width: 260px;
+	--window-width: 280px;
 	--window-height: 450px;
 	--window-fade-time: 2s;
 
@@ -225,7 +232,7 @@ body {
 }
 
 #container:not(.idle) {
-	animation: fadeIn 0.5s forwards;
+	animation: fadeIn 0.25s forwards;
 }
 
 #container.done {
@@ -312,7 +319,7 @@ body {
 	position: relative;
 }
 
-#contents span.loadingspinner {
+span.loadingspinner {
 	position: absolute;
 	right: 8px;
 	top: 8px;
@@ -397,6 +404,12 @@ body::-webkit-scrollbar {
 #statusbar span:last-child {
 	float: right;
 	color: grey;
+}
+
+.step_text {
+	padding: 8px;
+	color: grey;
+	font-size: 12px;
 }
 
 </style>

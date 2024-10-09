@@ -99,3 +99,10 @@ Heres what the first part of a log looks like (its too big to fit in one screens
 - openai whisper (speech to text)
 - openai tts
 - elevenlabs (tts)
+
+
+## Batch script using for starting up my tray thing
+```
+@echo off
+start /min "C:\Program Files\Python310\python.exe" "path\to\repo\src\main_wrapper.py"
+```

@@ -80,9 +80,10 @@ class AssEngine():
 			audio_data.export(SPEECH_TEMP_FILE, format="wav")
 
 			
-			with ctx.step(StepType.TRANSCRIBE):
+			with ctx.step(StepType.TRANSCRIBE) as step:
 				spoken_text = await self.audio_api.transcribe(SPEECH_TEMP_FILE)
 				ctx.log(f"TRANSCRIPTION: \"{spoken_text}\"")
+				step.gui_text = spoken_text
 
 		spoken_text = spoken_text.strip()
 		
@@ -100,9 +101,10 @@ class AssEngine():
 			attach_fullpath = os.path.join(settings.obsidian_root, "_vault/Attachments", attach_filename)
 			shutil.copy(filename, attach_fullpath)
 
-			with ctx.step(StepType.TRANSCRIBE):
+			with ctx.step(StepType.TRANSCRIBE) as step:
 				spoken_text = await self.audio_api.transcribe(filename)
 				ctx.log(f"TRANSCRIPTION: \"{spoken_text}\"")
+				step.gui_text = spoken_text
 
 			if spoken_text is None:
 				spoken_text = ""
@@ -248,15 +250,15 @@ class AssEngine():
 		func_runner = functions.FunctionsRunner(ctx)
 		return await func_runner.run_func(name, args)
 	
-	async def web_prompt(self, web_args: WebArgs):
+	async def web_prompt(self, web_args: WebArgs) -> Context:
 		with self.new_ctx(StepType.WEB_ASSISTANT, ContextSource.WEB, web_args = web_args) as ctx:
 			await self.prompt_assistant(ctx, web_args.text)
-		return ctx.finish_audio_response
+		return ctx
 
-	async def web_thought(self, web_args: WebArgs):
+	async def web_thought(self, web_args: WebArgs) -> Context:
 		with self.new_ctx(StepType.WEB_ASSISTANT, ContextSource.WEB, web_args = web_args) as ctx:
 			await self.run_function(ctx, "write_down", [ web_args.text ])
-		return ctx.finish_audio_response
+		return ctx
 
 	async def mic_to_clipboard(self, web_args: WebArgs):
 		do_paste = "Control" in web_args.modifiers
@@ -328,11 +330,17 @@ class AssEngine():
 
 	async def dashboard(self, web_args: WebArgs):
 		with self.new_ctx(StepType.SHOW_DASHBOARD, ContextSource.LOCAL_MACHINE, web_args = web_args) as ctx:
+			await ctx.play_sound(AssSound.WAKE)
 			if self.temp_lock:
 				self.temp_lock.release()
 				self.temp_lock = None
 			self.temp_lock = asyncio.Lock()
 			await self.temp_lock.acquire()
+
+			ctx.dashboard_data["status"] = {
+				"color": "#282d39",
+				"html": f"<span>Loading...</span><span></span>"
+			}
 			with ctx.step(StepType.CUSTOM, "Get Dashboard"):
 				ctx.dashboard_data["status"] = await self.run_function(ctx, "_get_dashboard_status", [])
 			# wait till user is done

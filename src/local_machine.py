@@ -88,8 +88,9 @@ class LocalMachine():
 				device_id_map[self.audio.get_device_info_by_host_api_device_index(0, i).get('name')] = i
 		
 		microphone_priorities = [
+			"Microphone (Realtek(R) Audio)",
 			"HD Web Camera",
-			"Headset Microphone (Arctis"
+			"Headset Microphone (Arctis",
 		]
 		audio_device_index = None
 		for devicenamepart in microphone_priorities:

@@ -163,6 +163,8 @@ class Step():
 		self.child_steps: typing.List[Step] = []
 		self.exception_trace = None
 
+		self.gui_text = None
+
 		log_message = f"Step: {step_type.pretty_name}"
 		if name:
 			log_message += f": {self.name}"
@@ -217,12 +219,17 @@ class Step():
 			classes.append("loading")
 		if self.final_state == StepFinalState.EXCEPTION:
 			classes.append("error")
+		gui_text = self.gui_text
+		gui_text_size = 200
+		if gui_text and len(gui_text) > gui_text_size:
+			gui_text = gui_text[:gui_text_size - 3] + "..."
 		return OrderedDict({
 			"id": step_id,
 			"name": self.step_type.pretty_name if self.name is None else self.name,
 			"icon": self.step_type.icon,
 			"classes": classes,
 			"child_steps": child_jsons,
+			"gui_text": self.gui_text
 		})
 
 

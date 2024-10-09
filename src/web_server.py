@@ -9,8 +9,9 @@ import asyncio
 from colorama import Fore
 import os
 from utils.settings import settings
+from utils.git_watcher import GIT_MANAGER
 
-from context import WebArgs
+from context import WebArgs, StepFinalState
 from assistant_engine import AssEngine
 
 from aiohttp import FormData
@@ -28,15 +29,23 @@ class WebServer():
 	engine: AssEngine
 	def __init__(self, engine: AssEngine):
 		self.engine = engine
+		self.git_manager = None
 	
 	async def setup(self):
 		app = web.Application(client_max_size=FILE_MAX_SIZE_MB*1024*1024)
 
 		app.router.add_static("/files/", WEB_FILES_PATH, name="static", show_index=False)
 		app.router.add_route('GET', '/{tail:.*}', self.handle_request)
-		app.router.add_route('POST', '/upload_recording', self.handle_upload)
+		app.router.add_route('POST', '/upload_recording', self.handle_upload)\
+		
+		if self.git_manager is None:
+			print("starting GitManager()...")
+			self.git_manager = GIT_MANAGER
+			self.git_manager.start_watching()
+
 
 		print("starting server...")
+
 
 		# Create the server and run it
 		runner = web.AppRunner(app)
@@ -61,6 +70,7 @@ class WebServer():
 			return web.Response(text="we're busy")
 
 		filename = None
+		response_code = 200
 
 		if request.path == "/mic_start":
 			if modifiers:
@@ -78,19 +88,24 @@ class WebServer():
 		elif request.path == "/run":
 			asyncio.ensure_future(self.engine.action_button(web_args))
 		elif request.path == "/prompt":
-			filename = await self.engine.web_prompt(web_args)
-			return web.FileResponse(filename)
+			ctx = await self.engine.web_prompt(web_args)
+			filename = ctx.finish_audio_response
+			if ctx.final_state != StepFinalState.SUCCESS:
+				response_code = 500
 		elif request.path == "/thought":
-			filename = await self.engine.web_thought(web_args)
+			ctx = await self.engine.web_thought(web_args)
+			filename = ctx.finish_audio_response
+			if ctx.final_state != StepFinalState.SUCCESS:
+				response_code = 500
 		elif request.path == "/dashboard":
 			return web.FileResponse(filename)
 		else:
 			return web.Response(text="Unknown Request!", status=404)
 		
 		if filename:
-			return web.FileResponse(filename)
+			return web.FileResponse(filename, status=response_code)
 
-		return web.Response(text="done!")
+		return web.Response(text="done!", status=response_code)
 
 	async def handle_upload(self, request: Request):
 		print(f"{Fore.BLUE}WEB_POST> {request.path_qs}{Fore.WHITE}")
