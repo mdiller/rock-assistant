@@ -36,6 +36,11 @@ class WebArgs():
 		self.attachment : str = request.query.get("attachment")
 		self.modifiers : str = request.query.get("modifiers")
 		self.exe : str = request.query.get("exe")
+		self.response_type : str = request.query.get("response_type")
+	
+	@property
+	def is_forced_text_response(self):
+		return self.response_type == "text"
 
 # make a thing to move the decimal place manually for me
 class PreciseMoney():
@@ -279,6 +284,10 @@ class Context():
 		self.current_step.log(text)
 
 	async def say(self, text: str, is_finish=False):
+		if self.web_args and self.web_args.is_forced_text_response:
+			self.say_log.append(text)
+			return
+
 		if len(text) > 500:
 			raise Exception(f"Too many characters {len(text)} passed to tts")
 		with self.step(StepType.TTS):

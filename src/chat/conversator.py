@@ -56,7 +56,7 @@ class Conversator:
 		self.token_counts = []
 		self.tokens_total = 0
 		self.openai_client = ctx.openai_client
-		self.tokenizer = tiktoken.encoding_for_model("gpt-3.5-turbo")
+		self.tokenizer = tiktoken.encoding_for_model("gpt-4o-mini") # gpt-3.5-turbo
 
 	def _input_message(self, role: ConversatorRole, message: str):
 		self.messages.append(ConversatorMessage(message, role))
@@ -72,7 +72,7 @@ class Conversator:
 	
 	def _get_response(self, args: ConvGenArgs):
 			return self.openai_client.chat.completions.create(
-				model="gpt-3.5-turbo",
+				model="gpt-4o-mini", # gpt-3.5-turbo
 				messages=list(map(lambda m: m.toJson(), self.messages)),
 				n=args.response_count,
 				max_tokens=args.output_limit,

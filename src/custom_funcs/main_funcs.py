@@ -143,7 +143,7 @@ The database you are writing this query for has schema matching the following:""
 					continue # skip this one
 				ctx.log(f"Running DB Query {i + 1} / {len(responses)}")
 				try:
-					result_table = db.query_as_table(code_snippets[i].code)
+					result_table = db.query_as_table(code_snippets[i].code, lines_max=15)
 					successful_query = code_snippets[i]
 					break
 				except Exception as e:
@@ -154,7 +154,10 @@ The database you are writing this query for has schema matching the following:""
 		conversator = ctx.get_conversator()
 		conversator.input_user(prompt)
 		conversator.input_system(f"The postgres database has been queried via this query:\n{successful_query}\n The response to this query was:\n{result_table}\n")
-		conversator.input_system("Respond to the user's initial question in a single sentance using the provided data. Round any numbers to the nearest integer, unless the number is less than 10.")
+		last_system_prompt = "Respond to the user's initial question in a single sentance using the provided data. Round any numbers to the nearest integer, unless the number is less than 10."
+		if ctx.web_args.is_forced_text_response:
+			last_system_prompt = "Respond to the user's initial question in a concise markdown format. note that tables are not supported, so make do with lists and using quotes, parenthesis, bolding, underlining, and italicizing values as best you can."
+		conversator.input_system(last_system_prompt)
 		response = await conversator.get_response(
 			ConvGenArgs(step_name="Interpret Results")
 		)

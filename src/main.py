@@ -18,7 +18,7 @@ signal.signal(signal.SIGINT, signal.SIG_DFL)
 gui = AssistantGui()
 
 def run_custom_modules(loop: asyncio.AbstractEventLoop):
-	custom_modules_dirname = "custom_modules"
+	custom_modules_dirname = "services"
 	# Path to the custom modules directory
 	script_dir = os.path.dirname(os.path.abspath(__file__))
 	custom_modules_path = os.path.join(script_dir, custom_modules_dirname)

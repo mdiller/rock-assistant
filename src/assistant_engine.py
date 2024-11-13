@@ -257,7 +257,17 @@ class AssEngine():
 
 	async def web_thought(self, web_args: WebArgs) -> Context:
 		with self.new_ctx(StepType.WEB_ASSISTANT, ContextSource.WEB, web_args = web_args) as ctx:
-			await self.run_function(ctx, "write_down", [ web_args.text ])
+			text = web_args.text
+			if ctx.web_args.text == "" and ctx.web_args.attachment:
+				_, ext = os.path.splitext(ctx.web_args.attachment)
+				if ext in [ ".mp3", ".ogg", ".wav", ".m4a" ]:
+					with ctx.step(StepType.TRANSCRIBE) as step:
+						spoken_text = await self.audio_api.transcribe(ctx.web_args.attachment)
+						ctx.log(f"TRANSCRIPTION: \"{spoken_text}\"")
+						step.gui_text = spoken_text
+						text = spoken_text
+
+			await self.run_function(ctx, "write_down", [ text ])
 		return ctx
 
 	async def mic_to_clipboard(self, web_args: WebArgs):

@@ -7,8 +7,10 @@ resource/web_files
 
 src/custom_funcs/private_funcs.py
 
-custom_modules/
+src/services/
 
 saved_transcriptions
+
+src/gui/fullscreen/
 
 LOG_VAULT

@@ -11,6 +11,7 @@ import re
 import json
 
 TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gui.html")
+# TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fullscreen", "index.html")
 
 class GuiEvent(QEvent):
 	SHOW = QEvent.Type(QEvent.registerEventType())
@@ -30,7 +31,7 @@ class AssistantGuiWindow(QMainWindow):
 	def __init__(self, parent = None):
 		super().__init__(parent)
 		self.setWindowTitle("Assistant")
-		self.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+		self.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowTransparentForInput) # | Qt.WindowTransparentForInput
 		self.setAttribute(Qt.WA_TranslucentBackground)
 		
 		# Set focus policy to prevent window from taking focus
